@@ -9,41 +9,32 @@ services:
     ports:
       - "6379:6379"
 
-  postgres:
-    container_name: postgres
-    restart: always
-    image: postgres
-    ports:
-      - "5432:5432"
-
   web:
     container_name: web
     image: kiwi.com/trelolo:latest
     build: .
+    env_file: .env
     volumes:
       - $PWD:/usr/src/app
     restart: always
     stop_signal: SIGINT
     ports:
       - "8010:80"
-    links:
-      - postgres
-    depends_on:
-      - postgres
     command: runserver
 
   worker:
     container_name: worker
-    image: kiwi.com/kapla:latest
+    image: kiwi.com/trelolo:latest
     build: .
     tty: true
+    env_file: .env
     volumes:
       - $PWD:/usr/src/app
+    restart: always
+    stop_signal: SIGINT
     links:
-      - postgres
       - redis
     depends_on:
-      - postgres
       - redis
-    entrypoint: python
-    command: /usr/local/bin/huey_consumer.py trelolo.worker.huey -w 2 -q
+    entrypoint: /usr/src/app/manage.py
+    command: work

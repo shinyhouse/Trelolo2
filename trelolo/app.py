@@ -1,22 +1,27 @@
-from .config import Config
 from flask import Flask
-from rainbow_logging_handler import RainbowLoggingHandler
-import sys
-from trelolo.admin.views import admin_page
+from flask_sqlalchemy import SQLAlchemy
 
+from .config import Config
+from .admin import views
+from .responses import gitlab, trello
+
+
+BLUEPRINTS = (gitlab, trello, views)
 
 app = Flask(__name__)
 __all__ = ['create_app']
+
+db = SQLAlchemy()
 
 
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
-    app.register_blueprint(admin_page)
-    configure_logging(app)
+    register_blueprints(app)
+    db.init_app(app)
     return app
 
 
-def configure_logging(app):
-    handler = RainbowLoggingHandler(sys.stderr)
-    app.logger.addHandler(handler)
+def register_blueprints(app):
+    for blueprint in BLUEPRINTS:
+        app.register_blueprint(blueprint.bp)

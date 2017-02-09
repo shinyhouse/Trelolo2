@@ -3,6 +3,15 @@ from flask import (
     abort, Blueprint, current_app, render_template, request, Response
 )
 from jinja2 import TemplateNotFound
+from rq import Queue
+
+from ..config import Config
+from ..rq_connect import rq_connect
+
+q = Queue(
+    connection=rq_connect,
+    default_timeout=Config.QUEUE_TIMEOUT
+)
 
 
 def check_auth(username, password):
@@ -26,12 +35,12 @@ def requires_auth(f):
     return decorated
 
 
-admin_page = Blueprint('admin_page', __name__,
-                       template_folder='templates')
+bp = Blueprint('admin_page', __name__,
+               template_folder='templates')
 
 
-@admin_page.route('/', defaults={'page': 'index'})
-@admin_page.route('/<page>')
+@bp.route('/', defaults={'page': 'index'})
+@bp.route('/<page>')
 @requires_auth
 def show(page):
     try:
