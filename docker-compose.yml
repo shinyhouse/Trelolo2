@@ -1,0 +1,48 @@
+---
+version: '2'
+
+services:
+
+  redis:
+    container_name: redis
+    image: redis
+    ports:
+      - "6379:6379"
+
+  postgres:
+    container_name: postgres
+    restart: always
+    image: postgres
+    ports:
+      - "5432:5432"
+
+  web:
+    container_name: web
+    image: kiwi.com/trelolo:latest
+    build: .
+    volumes:
+      - $PWD:/usr/src/app
+    restart: always
+    stop_signal: SIGINT
+    ports:
+      - "8010:80"
+    links:
+      - postgres
+    depends_on:
+      - postgres
+    command: runserver
+
+  worker:
+    container_name: worker
+    image: kiwi.com/kapla:latest
+    build: .
+    volumes:
+      - $PWD:/usr/src/app
+    links:
+      - postgres
+      - redis
+    depends_on:
+      - postgres
+      - redis
+    entrypoint: python
+    command: /usr/local/bin/huey_consumer.py trelolo.worker.huey -w 2
