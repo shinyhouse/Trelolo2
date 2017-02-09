@@ -1,11 +1,13 @@
 from functools import wraps
-from flask import abort, Blueprint, render_template, request, Response
+from flask import (
+    abort, Blueprint, current_app, render_template, request, Response
+)
 from jinja2 import TemplateNotFound
 
 
 def check_auth(username, password):
-    return username == '' and \
-        password == ''
+    return username == current_app.config.get('ADMIN_USER') and \
+        password == current_app.config.get('ADMIN_PASSWORD')
 
 
 def authenticate():

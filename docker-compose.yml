@@ -36,6 +36,7 @@ services:
     container_name: worker
     image: kiwi.com/kapla:latest
     build: .
+    tty: true
     volumes:
       - $PWD:/usr/src/app
     links:
@@ -45,4 +46,4 @@ services:
       - postgres
       - redis
     entrypoint: python
-    command: /usr/local/bin/huey_consumer.py trelolo.worker.huey -w 2
+    command: /usr/local/bin/huey_consumer.py trelolo.worker.huey -w 2 -q

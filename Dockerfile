@@ -18,6 +18,7 @@ RUN pip install --src /usr/src/packages --no-cache-dir -r requirements.txt
 
 ENV PYTHONUNBUFFERED="1"
 ENV PYTHONPATH="/usr/src/app/"
+ENV TERM=xterm
 
 EXPOSE 8010
 ENTRYPOINT ["/usr/src/app/manage.py"]
