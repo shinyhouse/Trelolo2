@@ -9,28 +9,20 @@ services:
     ports:
       - "6379:6379"
 
+  # local DB
+
   postgres:
     container_name: postgres
     restart: always
     image: postgres
+    environment:
+      POSTGRES_DB: "trelolodb"
+      POSTGRES_USER: "trelolo"
+      POSTGRES_PASSWORD: "test"
     ports:
       - "5432:5432"
 
-  web:
-    container_name: web
-    image: kiwi.com/trelolo:latest
-    build: .
-    volumes:
-      - $PWD:/usr/src/app
-    restart: always
-    stop_signal: SIGINT
-    ports:
-      - "8010:80"
-    links:
-      - postgres
-    depends_on:
-      - postgres
-    command: runserver
+  # tunnel to localhost
 
   ngrok:
     container_name: ngrok
@@ -38,24 +30,24 @@ services:
     ports:
       - "0.0.0.0:4040:4040"
     environment:
+      # see possible environment variables here:
+      # https://github.com/wernight/docker-ngrok
       NGROK_AUTH: <fill>
       NGROK_HOSTNAME: <fill>
       NGROK_PORT: "web:5000"
     links:
       - web
 
-  worker:
-    container_name: worker
-    image: kiwi.com/kapla:latest
-    build: .
-    tty: true
-    volumes:
-      - $PWD:/usr/src/app
+  web:
+    container_name: web
     links:
       - postgres
-      - redis
     depends_on:
       - postgres
-      - redis
-    entrypoint: python
-    command: /usr/local/bin/huey_consumer.py trelolo.worker.huey -w 2 -q
+
+  worker:
+    container_name: worker
+    links:
+      - postgres
+    depends_on:
+      - postgres

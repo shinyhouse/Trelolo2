@@ -17,7 +17,8 @@ You have installed Docker on your machine (this instructions is valid for
 3. Edit `.env` and fill there your configuration values
 4. Make copy of `docker-compose.override-local.yml` file:
    `cp docker-compose.override-local.yml docker-compose.override.yml`
-5. Edit `docker-compose.overide.yml` and fill values for ngrok docker service    
+5. Edit `docker-compose.overide.yml` and fill
+   environment variables for ngrok docker service    
 6. Build Docker image: `docker-compose build`
 
 Now you have prepared environment for Docker run. You should repeat step (6)
@@ -44,6 +45,7 @@ CTRL+C, wait for while and once you will be back in console type:
 
 Required environment variables are:
 
+- `SECRET KEY`
 - `TRELOLO_API_KEY`
 - `TRELOLO_TOKEN`
 - `CALLBACK_URL`
@@ -54,8 +56,6 @@ Required environment variables are:
 - `REDIS`
 - `FLASK_HOST`
 - `FLASK_PORT`
-- `POSTGRES_USER`
-- `POSTGRES_PASSWORD`
-- `POSTGRES_DB`
+- `SQLALCHEMY_DATABASE_URI` (optional on local)
 - `ADMIN_USERNAME`
 - `ADMIN_PASSWORD`
