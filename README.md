@@ -15,9 +15,12 @@ You have installed Docker on your machine (this instructions is valid for
 1. Go into root folder of Trelolo project (you should see `Dockerfile`)
 2. Make copy of `env.example` file: `cp env.example .env`
 3. Edit `.env` and fill there your configuration values
-4. Build Docker image: `docker-compose build`
+4. Make copy of `docker-compose.override-local.yml` file:
+   `cp docker-compose.override-local.yml docker-compose.override.yml`
+5. Edit `docker-compose.overide.yml` and fill values for ngrok docker service    
+6. Build Docker image: `docker-compose build`
 
-Now you have prepared environment for Docker run. You should repeat step (4)
+Now you have prepared environment for Docker run. You should repeat step (6)
 everytime your `requirements.*` or `Dockerfile` change.
 
 ## Run
@@ -54,5 +57,5 @@ Required environment variables are:
 - `POSTGRES_USER`
 - `POSTGRES_PASSWORD`
 - `POSTGRES_DB`
-- `CONFIG_USERNAME`
-- `CONFIG_PASSWORD`
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD`
