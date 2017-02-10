@@ -1,7 +1,10 @@
-from ..config import Config
 from flask import Blueprint, request
 from rq import Queue
+
+from trelolo.config import Config
 from trelolo.rq_connect import rq_connect
+from trelolo.tasks.trello import foo
+
 
 q = Queue(
     connection=rq_connect,
@@ -16,6 +19,7 @@ bp = Blueprint('trello', __name__)
     methods=['GET', 'POST']
 )
 def webhook_teamboard():
+    q.enqueue(foo)
     if request.method == 'POST':
         pass
     return __name__
