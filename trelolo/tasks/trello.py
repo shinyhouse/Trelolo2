@@ -1,11 +1,13 @@
 import logging
 
-from .config import trello_client
+from .config import client
+import trelolo.helpers as helpers
 
 
 logger = logging.getLogger(__name__)
 
 
 def foo():
-    for board in trello_client.list_boards():
+    logger.error(helpers.webhook_url_teamboard())
+    for board in client.list_boards():
         logger.info(board.name)

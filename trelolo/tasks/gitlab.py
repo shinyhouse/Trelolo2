@@ -1,6 +1,6 @@
 import logging
 
-from .config import trello_client
+from .config import client
 
 
 logger = logging.getLogger(__name__)
