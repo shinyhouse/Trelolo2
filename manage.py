@@ -18,13 +18,23 @@ def _make_context():
 
 app = create_app()
 
+<<<<<<< HEAD
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
+=======
+>>>>>>> 0ab9074c50a43fe02f4d085260a6373f0ee9fb58
 manager = Manager(app)
 manager.add_command('shell', Shell(make_context=_make_context))
 manager.add_command('runserver', Server(host=app.config['FLASK_HOST']))
 manager.add_command('db', MigrateCommand)
+
+
+with app.app_context():
+    q = Queue(
+        connection=rq_connect,
+        default_timeout=app.config.get('QUEUE_TIMEOUT')
+    )
 
 
 with app.app_context():
