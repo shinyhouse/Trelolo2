@@ -8,12 +8,6 @@ from ..models import Boards, Cards, Issues
 logger = logging.getLogger(__name__)
 
 
-class BoardType(Enum):
-    TOPBOARD = 1
-    MAINBOARD = 2
-    TEAMBOARD = 3
-
-
 class Trelolo(TrelloClient):
 
     def setup_gitlab(self, gitlab_url, gitlab_token):

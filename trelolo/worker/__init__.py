@@ -1,7 +1,7 @@
 import logging
 from ..config import Config
 
-from trelolo.trelolo.client import Trelolo, BoardType
+from trelolo.trelolo.client import Trelolo
 from trelolo import models
 from trelolo.extensions import db
 
@@ -59,7 +59,7 @@ def hook_teamboard(board_id):
                 insert_board = models.Boards(
                     trello_id=board.id,
                     name=board.name,
-                    type=BoardType.TEAMBOARD,
+                    type=3,
                     hook_id=webhook.id,
                     hook_url=webhook.callback_url
                 )
