@@ -40,12 +40,6 @@ bp = Blueprint('admin_page', __name__,
                template_folder='templates')
 
 
-@bp.route('/unhook/all', methods=['GET'])
-def unhook_all():
-    q.enqueue(worker.unhook_all)
-    return __name__
-
-
 @bp.route('/config/job/<id>', methods=['GET', 'POST'])
 def show_job_state(id):
     state = True
