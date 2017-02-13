@@ -2,6 +2,7 @@ import logging
 from ..config import Config
 
 from trelolo.trelolo.client import Trelolo
+from trelolo import models
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +36,11 @@ def unhook_all():
         logger.warn('unhooking teamboard {}').format(hook.id)
 
 
-def hook_teamboards(board_ids=[]):
+def hook_teamboard(board_id):
     exclude = client.boards.keys()
     for board in client.list_boards():
         if board.id not in exclude and \
-         board.id in board_ids and \
+         board.id == board_id and \
          not client.does_webhook_exist(board.id):
             webhook = client.create_hook(
                 '{}/trello/teamboard'.format(client.webhook_url),
@@ -47,18 +48,18 @@ def hook_teamboards(board_ids=[]):
                 token=client.resource_owner_key
             )
             if webhook:
-                # TODO store to DB
-                pass
+                models.Boards.
+
             for card in board.open_cards():
                 if card.labels:
                     label = card.labels[-1]
     return True
 
 
-def unhook_teamboards(board_ids=[]):
+def unhook_teamboard(board_id):
     for board in client.list_boards():
         for hook in client.list_hooks(client.resource_owner_key):
-            if board.id in board_ids:
+            if board.id == board_id:
                 if hook.id_model == board.id:
                     hook.delete()
                     # TODO remove from DB
