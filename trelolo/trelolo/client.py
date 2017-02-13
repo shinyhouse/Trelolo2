@@ -28,6 +28,7 @@ class Trelolo(TrelloClient):
             self.create_hook(
                 '{}/trello/mainboard'.format(self.webhook_url),
                 mainboard_id,
+                'mainboard: {}'.format(mainboard_id),
                 token=self.resource_owner_key
             )
 

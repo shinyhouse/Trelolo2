@@ -55,8 +55,8 @@ def show_job_state(id):
 @requires_auth
 def show_config():
     boards = models.Boards.query.all()
-    ids = [board.id for board in boards]
-    hooks = [board.hook for board in boards]
+    ids = [board.trello_id for board in boards]
+    hooks = {board.trello_id: board.hook_id for board in boards}
     if request.method == 'POST':
         job = None
         board_id = request.form.get('board_id')
@@ -67,7 +67,7 @@ def show_config():
                     job = q.enqueue(worker.hook_teamboard, board_id)
             else:
                 if board_id in ids:
-                    job = q.enqueue(worker.unhook_board, board_id)
+                    job = q.enqueue(worker.unhook_teamboard, board_id)
         job_id = job.id if job else None
         return jsonify(job_id=job_id)
     return render_template('config.html',
