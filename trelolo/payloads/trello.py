@@ -3,7 +3,14 @@ from rq import Queue
 
 from trelolo.config import Config
 from trelolo.rq_connect import rq_connect
-from trelolo.tasks.trello import foo
+from trelolo import worker
+
+
+ALLOWED_WEBHOOK_ACTIONS = (
+    'addChecklistToCard', 'addLabelToCard', 'addMemberToCard',
+    'deleteCard', 'removeLabelFromCard', 'updateCard',
+    'updateCheckItemStateOnCard', 'updateLabel'
+)
 
 
 q = Queue(
@@ -18,10 +25,12 @@ bp = Blueprint('trello', __name__)
     '/callback/trello/teamboard',
     methods=['GET', 'POST']
 )
-def webhook_teamboard():
-    q.enqueue(foo)
+def teamboard_webhook():
     if request.method == 'POST':
-        pass
+        json = request.json()
+        if json['action']['type'] in ALLOWED_WEBHOOK_ACTIONS:
+            if json['action']['type'] == 'UpdateCard':
+                q.enqueue(worker.payload_teamboard_update_card, json)
     return __name__
 
 
@@ -29,17 +38,7 @@ def webhook_teamboard():
     '/callback/trello/mainboard',
     methods=['GET', 'POST']
 )
-def webhook_mainboard():
-    if request.method == 'POST':
-        pass
-    return __name__
-
-
-@bp.route(
-    '/callback/trello/topboard',
-    methods=['GET', 'POST']
-)
-def webhook_topboard():
+def mainboard_webhook():
     if request.method == 'POST':
         pass
     return __name__
@@ -49,7 +48,7 @@ def webhook_topboard():
     '/callback/trello/card/<card_id>/<issue_id>',
     methods=['GET', 'POST']
 )
-def webhook_card(card_id, issue_id):
+def card_webhook(card_id, issue_id):
     if request.method == 'POST':
         pass
     return __name__

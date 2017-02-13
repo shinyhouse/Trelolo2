@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 from __future__ import print_function, unicode_literals
 from flask_migrate import Migrate, MigrateCommand
-from flask_sqlalchemy import SQLAlchemy
 from flask_script import Manager, Shell, Server
 from rq import Worker, Queue, Connection
 from trelolo import create_app
 from trelolo.rq_connect import rq_connect
-from trelolo.tasks.trello import foo
+from trelolo import models
+from trelolo.worker import unhook_all
+from trelolo.extensions import db
 
 
 def _make_context():
@@ -17,8 +18,6 @@ def _make_context():
 
 
 app = create_app()
-
-db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
 manager = Manager(app)
@@ -34,11 +33,9 @@ with app.app_context():
     )
 
 
-with app.app_context():
-    q = Queue(
-        connection=rq_connect,
-        default_timeout=app.config.get('QUEUE_TIMEOUT')
-    )
+@manager.command
+def unhookall():
+    q.enqueue(unhook_all)
 
 
 @manager.command

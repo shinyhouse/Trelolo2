@@ -48,7 +48,7 @@ Required environment variables are:
 - `SECRET KEY`
 - `TRELOLO_API_KEY`
 - `TRELOLO_TOKEN`
-- `CALLBACK_URL`
+- `WEBHOOK_URL`
 - `TRELOLO_MAIN_BOARD`
 - `TRELOLO_TOP_BOARD`
 - `GITLAB_URL`

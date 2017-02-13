@@ -1,1 +1,88 @@
-CONFIG PAGE
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trelolo</title>
+    <link rel="stylesheet" href="http://yui.yahooapis.com/pure/0.6.0/pure-min.css">
+    <script src="https://code.jquery.com/jquery-3.1.1.min.js"
+			integrity="sha256-hVVnYaiADRTO2PzUGmuLJr8BLUSjGIZsDYGmIJLv2b8="
+			crossorigin="anonymous"></script>
+</head>
+
+<body>
+
+    <div style="width: 100%;">
+    <div style="width: 50%; margin: 0 auto;">
+    <h1>Trelolo</h1>
+    <ul>
+        <li><strong>Top Board {{inuse[0]}}</strong></li>
+        <li><strong>Main Board {{inuse[1]}}</strong></li>
+    </ul>
+    <h4>Available Boards To Track:</h4>
+    <form id="form-boards" class="pure-form pure-form-stacked" method="POST">
+    {% for board in boards %}
+            {% if board.id not in inuse %}
+            <label for="board-{{board.id}}" class="pure-checkbox">
+            <input id="board-{{board.id}}"
+                   type="checkbox"
+                   name="checked-boards"
+                   value="{{board.id}}"
+                   {% if board.id in checked_boards %}
+                   checked="checked"
+                   {% endif %}
+            >
+            &nbsp;<strong>{{board.name}}</strong>&nbsp;<span style="font-size: 9px;">
+            ({{board.id}})
+                {% if stored_board_hooks[board.id] %}
+                <span style="background-color: #77D557;">
+                    <strong>hook id:&nbsp;</strong>{{ stored_board_hooks[board.id] }}
+                </span>
+                {% endif %}
+                &nbsp;
+                <span id="span-{{board.id}}"></span>
+            </span>
+            </label>
+
+            {% endif %}
+    {% endfor %}
+    </form>
+    </div>
+    </div>
+
+    <script>
+
+        function sleep (time) {
+            return new Promise((resolve) => setTimeout(resolve, time));
+        }
+
+        function jobState(id, board_id){
+            $.post('/config/job/'+id, function(data) {
+                if (data.state == false) {
+                    $("#span-"+board_id).html("PROCESSING...")
+                    $(":checkbox").prop("disabled", true);
+                    setTimeout(jobState, 500);
+                } else {
+                    sleep(5000).then(() => {
+                        $(":checkbox").prop("disabled", false);
+                        location.reload();
+                    });
+                }
+            });
+        };
+
+        $(":checkbox").change( function() {
+            var checked = $(this).is(":checked");
+            var board_id = $(this).val();
+            $.post("",
+                  {'board_id': board_id, 'checked': checked | 0},
+                  function(result) {
+                      jobState(result.job_id, board_id)
+                  }
+            );
+        });
+
+    </script>
+
+</body>
+</html>

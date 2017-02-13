@@ -3,7 +3,7 @@ from os import environ as env
 
 class Config(object):
     SECRET_KEY = env.get('SECRET_KEY')
-    CALLBACK_URL = env.get('CALLBACK_URL')
+    WEBHOOK_URL = env.get('WEBHOOK_URL')
     TRELOLO_API_KEY = env.get('TRELOLO_API_KEY')
     TRELOLO_TOKEN = env.get('TRELOLO_TOKEN')
     TRELOLO_MAIN_BOARD = env.get('TRELOLO_MAIN_BOARD')

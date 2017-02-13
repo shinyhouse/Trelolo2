@@ -1,12 +1,13 @@
 from functools import wraps
 from flask import (
-    abort, Blueprint, current_app, render_template, request, Response
+    Blueprint, current_app, jsonify, render_template, request, Response
 )
-from jinja2 import TemplateNotFound
 from rq import Queue
 
 from ..config import Config
 from ..rq_connect import rq_connect
+from trelolo import worker
+
 
 q = Queue(
     connection=rq_connect,
@@ -39,11 +40,23 @@ bp = Blueprint('admin_page', __name__,
                template_folder='templates')
 
 
-@bp.route('/', defaults={'page': 'index'})
-@bp.route('/<page>')
+@bp.route('/unhook/all', methods=['GET'])
+def unhook_all():
+    q.enqueue(worker.unhook_all)
+    return __name__
+
+
+@bp.route('/config/job/<id>', methods=['GET', 'POST'])
+def show_job_state(id):
+    state = True
+    if id:
+        job = q.fetch_job(id)
+        if job:
+            state = q.fetch_job(id).is_finished
+    return jsonify(state=state)
+
+
+@bp.route('/config', methods=['GET', 'POST'])
 @requires_auth
-def show(page):
-    try:
-        return render_template('config.html')
-    except TemplateNotFound:
-        abort(404)
+def show_config():
+    return __name__
