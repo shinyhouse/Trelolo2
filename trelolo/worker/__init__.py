@@ -3,6 +3,7 @@ from ..config import Config
 
 from trelolo.trelolo.client import Trelolo
 from trelolo import models
+from trelolo.extensions import db
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +33,14 @@ def payload_teamboard_remove_label(json):
 
 def unhook_all():
     for hook in client.list_hooks(client.resource_owner_key):
-        hook.delete
-        logger.warn('unhooking teamboard {}').format(hook.id)
+        found = models.Boards.query.filter_by(
+            trello_id=hook.id_model
+        ).first()
+        if found:
+            db.session.delete(found)
+            db.session.commit()
+        logger.warning('unhooking: {}'.format(hook.desc))
+        hook.delete()
 
 
 def hook_teamboard(board_id):
@@ -45,10 +52,19 @@ def hook_teamboard(board_id):
             webhook = client.create_hook(
                 '{}/trello/teamboard'.format(client.webhook_url),
                 board.id,
+                'teamboard {}'.format(board.name),
                 token=client.resource_owner_key
             )
             if webhook:
-                models.Boards.
+                insert_board = models.Boards(
+                    trello_id=board.id,
+                    name=board.name,
+                    type=3,
+                    hook_id=webhook.id,
+                    hook_url=webhook.callback_url
+                )
+                db.session.add(insert_board)
+                db.session.commit()
 
             for card in board.open_cards():
                 if card.labels:
@@ -57,9 +73,16 @@ def hook_teamboard(board_id):
 
 
 def unhook_teamboard(board_id):
+    hooks = client.list_hooks(client.resource_owner_key)
     for board in client.list_boards():
-        for hook in client.list_hooks(client.resource_owner_key):
+        for hook in hooks:
             if board.id == board_id:
                 if hook.id_model == board.id:
+                    found = models.Boards.query.filter_by(
+                        trello_id=hook.id_model
+                    ).first()
+                    if found:
+                        db.session.delete(found)
+                        db.session.commit()
+                    logger.warning('unhooking: {}').format(hook.desc)
                     hook.delete()
-                    # TODO remove from DB
