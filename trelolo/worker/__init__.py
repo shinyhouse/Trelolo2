@@ -44,7 +44,7 @@ def unhook_all():
 
 
 def hook_teamboard(board_id):
-    exclude = client.boards.keys()
+    exclude = client.board_data.keys()
     for board in client.list_boards():
         if board.id not in exclude and \
          board.id == board_id and \
