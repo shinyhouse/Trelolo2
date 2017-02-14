@@ -27,9 +27,9 @@ bp = Blueprint('trello', __name__)
 )
 def teamboard_webhook():
     if request.method == 'POST':
-        json = request.json()
+        json = request.json
         if json['action']['type'] in ALLOWED_WEBHOOK_ACTIONS:
-            if json['action']['type'] == 'UpdateCard':
+            if json['action']['type'] == 'updateCard':
                 q.enqueue(worker.payload_teamboard_update_card, json)
     return __name__
 
