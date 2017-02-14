@@ -290,8 +290,8 @@ class Trelolo(TrelloClient, helpers.GitLabMixin):
 
     def handle_targets(self,
                        card,
-                       targets=[],
-                       stored_targets=[],
+                       targets=None,
+                       stored_targets=None,
                        target_url='issues',
                        target_type='issue',
                        tag='GLIS'):
@@ -300,6 +300,8 @@ class Trelolo(TrelloClient, helpers.GitLabMixin):
         return actual state of targets in db as well as
         new-found target info for a specific target type
         """
+        targets = targets or []
+        stored_targets = stored_targets or []
         trello_link = '* {}'.format(card.url)
 
         stored = {'{}*{}*{}'.format(
