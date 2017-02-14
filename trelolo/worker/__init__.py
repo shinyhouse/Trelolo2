@@ -18,7 +18,15 @@ client.setup_trelolo(
 
 
 def payload_teamboard_update_card(json):
-    print(json)
+    data = json['action']['data']
+    try:
+        client.handle_teamboard_update_card(
+            data['card']['id'],
+            data['old']['desc'],
+            data['card']['desc']
+        )
+    except KeyError:
+        pass
 
 
 def payload_teamboard_add_label(json):
