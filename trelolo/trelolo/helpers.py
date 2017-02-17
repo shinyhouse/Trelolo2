@@ -1,11 +1,30 @@
-from enum import Enum
+import logging
 import re
-from .config import Config
+from collections import OrderedDict
 
 
-class TargetTag(Enum):
-    ISSUE = 'GLIS'
-    MR = 'GLMR'
+logger = logging.getLogger(__name__)
+
+
+def format_itemname(completeness, url, listname):
+    if completeness >= 0:
+        return "{:0.0f}% {} (#{})".format(
+            completeness, url, listname
+        )
+    else:
+        return "{} (#{})".format(url, listname)
+
+
+def format_teamboard_card_descritpion(old_desc, new_desc):
+    init_desc = "Main Board: {}\n\n-----\n{}"
+    parts = old_desc.split("-----\n")
+    if parts[0].startswith('Main Board: '):
+        desc = init_desc.format(new_desc, parts[1]) \
+         if new_desc else parts[1]
+    else:
+        desc = init_desc.format(new_desc, old_desc) \
+         if new_desc else old_desc
+    return desc
 
 
 def parse_mentions(desc):
@@ -17,47 +36,62 @@ def parse_listname(lst_name):
         return re.search(
             '\(\#([^]]+)\)', lst_name).group(1)
     except TypeError:
-        return None
+        pass
 
 
-def parse_gitlab_targets(desc):
-    try:
-        return re.search(
-            '<\n(.+?)\n>', desc).group(1).split('\n')
-    except (AttributeError, TypeError):
-        return []
+class CardDescription(object):
 
+    INIT_DESCRIPTION = '----\n' \
+                       'owner:\n' \
+                       'members:\n' \
+                       'delivery time:'
 
-def get_gitlab_target(target, tag=TargetTag.ISSUE):
-    try:
-        return re.search(
-            '\$' + tag + ':(.+?)\/(.+?):(\d+)', target
-        ).group(1, 2, 3)
-    except (AttributeError, TypeError):
-        return None
+    def __init__(self, desc=None):
+        self.desc = desc
+        self.desc_text = ''
+        self.data = OrderedDict()
+        self._parse()
+        logger.debug(
+            'CardDescription({})'.format(desc)
+        )
 
+    def _parse(self):
+        x = self.desc.split('----\n')
+        try:
+            self.desc_text = x[0].strip()
+            desc_lines = x[1].split('\n')
+            for line in desc_lines:
+                kv = line.split(':')
+                self.data[kv[0]] = kv[1]
+        except IndexError:
+            pass
 
-def is_mainboard_label(label):
-    return label.startswith('#')
+    def get_value(self, key, default=None):
+        try:
+            return self.data[key]
+        except KeyError:
+            return default
 
+    def set_value(self, key, value):
+        self.data[key] = value
 
-def is_topboard_label(label):
-    return label.startswith('OKR:')
+    def set_list_value(self, key, values):
+        val = self.get_value(key, '').strip()
+        l = val.split(',') if val != '' else []
+        l.extend([i for i in values if i not in l])
+        self.data[key] = ','.join(l)
 
+    def set_description_text(self, desc_text):
+        self.desc_text = desc_text
 
-def webhook_url_mainboard():
-    return '{}/trello/mainboard'.format(
-        Config.WEBHOOK_URL
-    )
-
-
-def webhook_url_teamboard():
-    return '{}/trello/teamboard'.format(
-        Config.WEBHOOK_URL
-    )
-
-
-def webhook_url_card(card_id, item_id):
-    return '{}/trello/card/{}/{}'.format(
-        Config.WEBHOOK_URL, card_id, item_id
-    )
+    def get_description(self):
+        desc = '{}\n\n'.format(self.desc_text) \
+            if self.desc_text != '' else ''
+        desc += '----\n{}' \
+            .format(
+                '\n'.join(
+                    ['{}: {}'.format(key, value)
+                     for (key, value) in self.data.items()]
+                 )
+             )
+        return desc

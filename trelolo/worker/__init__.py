@@ -16,21 +16,66 @@ client.setup_trelolo(
     Config.WEBHOOK_URL
 )
 
-
-def payload_teamboard_update_card(json):
-    print(json)
-
-
-def payload_teamboard_add_label(json):
-    print(json)
+client.setup_gitlab(
+    Config.GITLAB_URL, Config.GITLAB_TOKEN
+)
 
 
-def payload_teamboard_remove_label(json):
-    print(json)
+def get_card_from_db(card_id):
+    try:
+        return models.Cards.query.filter_by(card_id=card_id).first()
+        logger.info(card_id)
+    except IndexError:
+        return False
 
 
-# DB
+def payload_teamboard_update_card(data):
+    try:
+        client.handle_teamboard_update_card(
+            data['card']['id'], data['old']['desc'], data['card']['desc']
+        )
+    except KeyError:
+        pass
 
+
+def payload_update_label(parent_board_id, data):
+    try:
+        client.handle_update_label(
+            parent_board_id, data['old']['name'], data['label']['name']
+        )
+    except KeyError:
+        pass
+
+
+def payload_delete_card(data):
+    card = get_card_from_db(data['card']['id'])
+    try:
+        if card:
+            client.handle_delete_card(card)
+    except KeyError:
+        pass
+
+
+def payload_generic_event(parent_board_id, data):
+    try:
+        stored_card = get_card_from_db(data['card']['id'])
+        client.handle_generic_event(
+            parent_board_id, data['card']['id'], stored_card
+        )
+    except KeyError:
+        pass
+
+
+def payload_gitlab(data):
+    try:
+        client.handle_gitlab_state_change(
+            data['project_id'], data['id'], data['type'], data['state']
+        )
+    except KeyError:
+        pass
+
+
+# these are run from manage.py (be careful)
 def unhook_all():
     for hook in client.list_hooks(client.resource_owner_key):
         found = models.Boards.query.filter_by(
@@ -44,7 +89,7 @@ def unhook_all():
 
 
 def hook_teamboard(board_id):
-    exclude = client.boards.keys()
+    exclude = client.board_data.keys()
     for board in client.list_boards():
         if board.id not in exclude and \
          board.id == board_id and \
@@ -67,13 +112,30 @@ def hook_teamboard(board_id):
                 db.session.commit()
 
             for card in board.open_cards():
-                if card.labels:
-                    label = card.labels[-1]
+                card_list = card.get_list()
+                # ignore archived lists
+                if not card_list.closed:
+                    logger.warning(
+                        'fetching GL targets for card {}'.format(card.name)
+                    )
+                    # gitlab targets -> teamboard cards
+                    client.handle_teamboard_update_card(
+                        card.id, '', card.description
+                    )
+                    logger.warning(
+                        'searching suitable mainboard card for card {}'.format(
+                            card.name
+                        )
+                    )
+                    # teamboard cards -> main board
+                    client.handle_generic_event(
+                        Config.TRELOLO_MAIN_BOARD, card.id, None
+                    )
     return True
 
 
 def unhook_teamboard(board_id):
-    hooks = client.list_hooks(client.resource_owner_key)
+    hooks = client.list_hooks(token=client.resource_owner_key)
     for board in client.list_boards():
         for hook in hooks:
             if board.id == board_id:
