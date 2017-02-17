@@ -1,3 +1,4 @@
+import copy
 from collections import OrderedDict
 import logging
 from trello import TrelloClient, ResourceUnavailable
@@ -5,14 +6,22 @@ from trelolo.trelolo import helpers
 from trelolo import models
 from trelolo.extensions import db
 
+from .mixins import GitLabMixin
+
 logger = logging.getLogger(__name__)
 
 
-class Trelolo(TrelloClient):
+class Trelolo(TrelloClient, GitLabMixin):
+
+    CHECKLIST_TITLE = "Issues"
+
+    def setup_gitlab(self, gitlab_url, gitlab_token):
+        self.gitlab_url = gitlab_url
+        self.gitlab_token = gitlab_token
 
     def setup_trelolo(self, mainboard_id, topboard_id, webhook_url):
         self.webhook_url = webhook_url
-        self.boards = OrderedDict({
+        self.board_data = OrderedDict({
             mainboard_id: self.get_board_data(mainboard_id, {
                 'prefix': '#',
                 'remove': True
@@ -54,6 +63,185 @@ class Trelolo(TrelloClient):
             if i.id_model == model_id
         )
 
+    def remove_webhook(self, hook_id, model_id):
+        for hook in self.list_hooks(token=self.resource_owner_key):
+            if hook.id == hook_id or \
+             hook.id_model == model_id:
+                hook.delete()
+
+    def list_team_boards(self):
+        boards = []
+        team_boards = models.Boards.query.filter_by(type=3)
+        for b in team_boards:
+            board = self.get_board(b.trello_id)
+            boards.append(board)
+        return boards
+
+    def list_sub_cards(self, parent_card):
+        cards = []
+        sub_cards = models.Cards.query.filter_by(parent_card_id=parent_card.id)
+        for card in sub_cards:
+            card = self.get_card(card['card_id'])
+            card.fetch(eager=False)
+            cards.append(card)
+        return cards
+
+    def add_members(self, data):
+        pass
+
+    def add_label_to_gitlab_issues(self, parent_card, label):
+        """
+        Adds the OKR label to gitlab issues
+        """
+        issues = models.Issues.query.filter_by(parent_card_id=parent_card.id)
+        logger.debug("found {} issues for card {}"
+                     .format(len(issues), parent_card.name))
+        for issue in issues:
+            project_id = issue['project_id']
+            logger.info(
+                'Adding label to issue {}/{}'.format(project_id, issue['id'])
+            )
+            try:
+                self.create_label(project_id, label)
+            except Exception as e:
+                logger.error(
+                    'error creating gitlab label {}: {}'.format(label, str(e))
+                )
+            try:
+                for source in self.sources:
+                    try:
+                        if source.TARGET_TYPE == issue['target_type']:
+                            source.add_label(
+                                project_id, issue['issue_id'],
+                                label
+                            )
+                    except AttributeError:
+                        pass
+            except Exception as e:
+                logger.error(
+                    'error adding gitlab label {} to issue {}: {}'.format(
+                        label, issue['issue_id'], str(e)
+                    )
+                )
+
+    def okr_label_added(self, data, data_storage, board_data):
+        """
+        Adds an OKR label to team cards and gitlab issues.
+        """
+        label = data['data']['label']['name']
+        color = data['data']['label']['color']
+        logger.info("Adding {} label to team cards/gitlab issues"
+                    .format(label))
+        try:
+            # prepare data
+            card = self.get_card(data['id'])
+            # load team labels
+            team_labels = {}
+            for tboard in self.list_team_boards():
+                tlabel = helpers.find_label(tboard.get_labels(), label)
+                # create label if does not exist on board
+                if not tlabel:
+                    tlabel = self.trello_source.add_label_to_board(
+                        tboard, label, color
+                    )
+                if tlabel:
+                    team_labels[tboard.id] = tlabel
+            # add label to teamboard cards
+            team_board_cards = self.list_sub_cards(card)
+            for tcard in team_board_cards:
+                try:
+                    tlabel = team_labels[tcard.board_id]
+                    if tlabel:
+                        tcard.add_label(tlabel)
+                except Exception as e:
+                    logger.error("Error adding OKR label to card {}: {}"
+                                 .format(tcard.name, str(e)))
+                # add label to gitlab issues
+                self.add_label_to_gitlab_issues(tcard, label)
+        except Exception as e:
+            logger.error("Error adding OKR label: {}"
+                         .format(str(e)))
+
+    def add_okr_label_to_card(self, card, okr_label):
+        logger.info("Adding OKR label %s to card %s",
+                    okr_label.name,
+                    card.name)
+
+        tboard = card.board
+        label, color = (okr_label.name, okr_label.color)
+        tlabel = helpers.find_label(tboard.get_labels(), label)
+
+        if not tlabel:
+            tlabel = self.trello_source.add_label_to_board(
+                tboard, label, color
+            )
+
+        if tlabel:
+            try:
+                card.add_label(tlabel)
+            except Exception as e:
+                logger.error("Error adding OKR label to card {}: {}"
+                             .format(card.name, str(e)))
+
+            # add label to gitlab issues
+            self.add_label_to_gitlab_issues(card, label)
+
+    def remove_label_from_gitlab_issues(self, parent_card, label):
+        issues = models.Issues.query.filter_by(parent_card_id=parent_card.id)
+        logger.debug("Found {} issues for card {}"
+                     .format(len(issues), parent_card.name))
+        for issue in issues:
+            project_id = issue['project_id']
+            logger.debug("Removing label from issue {}/{}"
+                         .format(project_id, issue['id']))
+            try:
+                for source in self.sources:
+                    try:
+                        if source.TARGET_TYPE == issue['target_type']:
+                            source.remove_label(
+                                project_id, issue['issue_id'],
+                                label
+                            )
+                    except AttributeError:
+                        pass
+            except Exception as e:
+                logger.error("Error removing label {} from issue {}: {}"
+                             .format(label, issue['issue_id'], str(e)))
+
+    def okr_label_removed(self, data, data_storage, board_data):
+        """
+        Removes the OKR label from team cards and gitlab issues.
+        """
+        label = data['data']['label']['name']
+        logger.info("Removing {} label from team cards/gitlab issues"
+                    .format(label))
+        try:
+            # prepare data
+            card = self.get_card(data['id'])
+            # load team labels
+            team_labels = {}
+            for tboard in self.list_team_boards():
+                tlabel = helpers.find_label(tboard.get_labels(), label)
+                if tlabel:
+                    team_labels[tboard.id] = tlabel
+
+            # remove label from teamboard cards
+            team_board_cards = self.list_sub_cards(card)
+            for tcard in team_board_cards:
+                try:
+                    tlabel = team_labels[tcard.board_id]
+                    if tlabel:
+                        tcard.remove_label(tlabel)
+                except Exception as e:
+                    logger.error("Error removing OKR label from card {}: {}"
+                                 .format(tcard.name, str(e)))
+
+                # remove label from gitlab issues
+                self.remove_label_from_gitlab_issues(tcard, label)
+        except Exception as e:
+            logger.error("Error removing OKR label: {}"
+                         .format(str(e)))
+
     def handle_targets(self,
                        card,
                        targets=[],
@@ -75,7 +263,7 @@ class Trelolo(TrelloClient):
                   for target in stored_targets
                   if target.target_type == target_type}
 
-        fetched = [helpers.fetch_gitlab_target(
+        fetched = [self.fetch_gl_target(
                     target, target_url, tag) for target in targets]
 
         fetched = {'{}*{}*{}'.format(
@@ -112,7 +300,7 @@ class Trelolo(TrelloClient):
                 target['description'][1].append(
                     trello_link
                 )
-                logger.info(helpers.update_gitlab_description(
+                logger.info(self.update_gl_description(
                     target['project_id'],
                     target_url,
                     target['id'],
@@ -125,7 +313,7 @@ class Trelolo(TrelloClient):
                 card.checklists[0].delete_checklist_item(
                     target.item_name
                 )
-                desc = helpers.fetch_gitlab_target_description(
+                desc = self.fetch_gl_target_desc(
                     target.project_id,
                     target_url,
                     target.issue_id
@@ -134,7 +322,7 @@ class Trelolo(TrelloClient):
                 if desc:
                     if trello_link in desc[1]:
                         desc[1].remove(trello_link)
-                    logger.info(helpers.update_gitlab_description(
+                    logger.info(self.update_gl_desc(
                         target.project_id,
                         target_url,
                         target.issue_id,
@@ -162,18 +350,231 @@ class Trelolo(TrelloClient):
         # load data from storage
         stored_targets = models.Issues.query.filter_by(
             parent_card_id=card_id
-        )
+        ).all()
         # get card & its checklist
         card = self.get_card(card_id)
         card.fetch(eager=True)
         if not card.checklists:
-            card.add_checklist('Issues', [], [])
+            card.add_checklist(self.CHECKLIST_TITLE, [], [])
         # parse what we have in an updated description
-        targets = helpers.parse_gitlab_targets(new_desc)
-        issues = self.handle_targets(
+        targets = self.parse_gl_targets(new_desc)
+
+        self.handle_targets(
             card, targets, stored_targets, 'issues', 'issue', 'GLIS'
         )
-        merge_requests = self.handle_targets(
+        self.handle_targets(
             card, targets, stored_targets, 'merge_requests', 'mr', 'GLMR'
         )
-        # TODO update trello link list in GL description
+
+    @staticmethod
+    def get_completeness(card):
+        try:
+            cl = card.fetch_checklists()[0]
+            completed_tasks = sum([item['checked'] for item in cl.items])
+            return completed_tasks / len(cl.items) * 100
+        except (IndexError, ZeroDivisionError):
+            return -1
+
+    @staticmethod
+    def find_label(labels, label_name):
+        return next(
+            (label for label in labels if label.name == label_name), None
+        )
+
+    @staticmethod
+    def find_card(board_data, card_name):
+        return next(
+            (card for card in board_data['board'].open_cards()
+             if card.name == card_name), None
+        )
+
+    @staticmethod
+    def get_label(labels, label_data):
+        try:
+            try:
+                project_labels = [l.name for l in labels if
+                                  l.name.startswith(label_data['prefix'])]
+            except AttributeError:
+                project_labels = [l['name'] for l in labels if
+                                  l['name'].startswith(label_data['prefix'])]
+            tag = project_labels[-1]
+            if label_data['remove']:
+                tag = tag[len(label_data['prefix']):]
+            return tag
+        except IndexError:
+            return False
+        return False
+
+    def handle_update_label(self, parent_board_id, old_tag, new_tag):
+        board_data = self.board_data[parent_board_id]
+        old_label = self.get_label(
+            [{'name': old_tag}], board_data['metadata']
+        )
+        new_label = self.get_label(
+            [{'name': new_tag}], board_data['metadata']
+        )
+        card = self.find_card(board_data, old_label)
+        if card:
+            card.set_name(new_label)
+            models.Cards.query.filter_by(
+                label=old_label
+            ).update({models.Cards.label: new_label})
+            logger.info(
+                'changed {} label to {}'.format(
+                    old_label, new_label
+                )
+            )
+
+    def handle_generic_event(self, parent_board_id, card_id, stored_card):
+        board_data = self.board_data[parent_board_id]
+        card = self.get_card(card_id)
+        card.fetch(eager=False)
+        label = self.get_label(card.labels, board_data['metadata'])
+        # if label has been changed(removed) on a card
+        try:
+            if label != stored_card.label:
+                self.remove_checklist_item(stored_card)
+                card.set_description('')
+                db.session.delete(stored_card)
+                db.session.commit()
+        except (AttributeError, TypeError):
+            pass
+        # useful dict for later
+        completeness = self.get_completeness(card)
+        child = {
+            'card': copy.deepcopy(card),
+            'title': helpers.format_itemname(
+                completeness, card.url, card.get_list().name
+            ),
+            'state': completeness == 100
+        }
+        if label:
+            if not stored_card:
+                # search for suitable parent cards
+                card = self.find_card(board_data, label)
+                if card is None:
+                    card = board_data['inbox'].add_card(
+                        label,
+                        desc=helpers.CardDescription.INIT_DESCRIPTION
+                    )
+                card.fetch(eager=False)
+                # new item (the whole sub card)
+                item = self.add_checklist_item(
+                    card, child['title'], child['state']
+                )
+                # update child card description
+                child['card'].set_description(
+                    helpers.format_teamboard_card_descritpion(
+                        child['card'].description, card.url
+                    )
+                )
+                # insert into db
+                new_card = models.Cards(
+                    card_id=child['card'].id,
+                    board_id=child['card'].board_id,
+                    parent_card_id=card.id,
+                    item_id=item['id'],
+                    item_name=child['title'],
+                    label=label,
+                    checked=child['state'],
+                    hook_id=item['hook_id'],
+                    hook_url=item['hook_url']
+                )
+                db.session.add(new_card)
+            else:
+                upd = self.update_checklist_item(
+                    child['title'], child['state'], stored_card
+                )
+                if upd and stored_card:
+                    stored_card.item_name = child['title']
+                    stored_card.checked = child['state']
+        # save changes
+        db.session.commit()
+        try:
+            pass
+        except Exception as e:
+            logger.error(
+                'Error updating card description: {}'.format(str(e))
+            )
+
+    def add_checklist_item(self, card, item_name, checked):
+        try:
+            cl = card.fetch_checklists()[0]
+        except IndexError:
+            cl = card.add_checklist(self.CHECKLIST_TITLE, [], [])
+        item = cl.add_checklist_item(item_name, checked)
+        hook = self.create_hook(
+            "/trello/{}/{}".format(card.id, item['id']),
+            card.id,
+            '',
+            token=self.resource_owner_key
+        )
+        return {
+            'id': item['id'],
+            'hook_id': hook.id if hook else '',
+            'hook_url': hook.callback_url if hook else ''
+        }
+        # self.add_members(data)
+
+    def update_checklist_item(self, item_name, checked, stored_card):
+        if not stored_card:
+            logger.error('card or item not specified')
+            return False
+        card = self.get_card(stored_card.parent_card_id)
+        card.fetch(eager=False)
+        cl = card.fetch_checklists()[0]
+        logger.info(cl)
+        item = self.get_checklist_item(cl, stored_card.item_id)
+        logger.info(
+            'updating item {} on card {}'.format(
+                item['name'], card.name)
+        )
+        upd = {}
+        # check name change
+        if item_name != stored_card.item_name:
+            logger.info(
+                'renaming item {} to {}'.format(
+                    stored_card.item_name, item_name
+                )
+            )
+            cl.rename_checklist_item(stored_card.item_name, item_name)
+            upd['item_name'] = item_name
+        # check status change
+        if checked != stored_card.checked:
+            logger.info(
+                'set checked status {} to {}'.format(
+                    item_name, checked
+                )
+            )
+            cl.set_checklist_item(item_name, checked)
+            upd['checked'] = checked
+        return upd
+        # self.add_members(data)
+
+    @staticmethod
+    def get_checklist_item(checklist, item_id):
+        return next(
+            (item for item in checklist.items if item['id'] == item_id), None
+        )
+
+    def remove_checklist_item(self, stored_card):
+        try:
+            card = self.get_card(stored_card.parent_card_id)
+            card.fetch(eager=False)
+            cl = card.fetch_checklists()[0]
+            item = self.get_checklist_item(
+                cl, stored_card.item_id
+            )
+            cl.delete_checklist_item(item['name'])
+        except:
+            logger.error('could not remove checklist item')
+        self.remove_webhook(
+            stored_card.hook_id,
+            stored_card.card_id
+        )
+
+    def handle_delete_card(self, stored_card):
+        self.remove_checklist_item(stored_card)
+        db.session.delete(stored_card)
+        db.session.commit()
+        logger.info("deleteCard payload handled succesfully")

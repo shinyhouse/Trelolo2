@@ -5,9 +5,7 @@ from trelolo.config import Config
 from trelolo.rq_connect import rq_connect
 
 
-ALLOWED_WEBHOOK_ACTIONS = (
-    'open', 'close', 'reopen', 'update'
-)
+ALLOWED_WEBHOOK_ACTIONS = ('close', 'reopen')
 
 q = Queue(
     connection=rq_connect,

@@ -21,6 +21,22 @@ q = Queue(
 bp = Blueprint('trello', __name__)
 
 
+def pick_data(json):
+    data = json['action']['data']
+    picked = {
+        'action': json['action']['type'],
+        'card': {},
+        'old': {},
+        'label': {}
+    }
+    for i in ('card', 'old', 'label'):
+        try:
+            picked[i] = data[i]
+        except KeyError:
+            pass
+    return picked
+
+
 @bp.route(
     '/callback/trello/teamboard',
     methods=['GET', 'POST']
@@ -29,8 +45,28 @@ def teamboard_webhook():
     if request.method == 'POST':
         json = request.json
         if json['action']['type'] in ALLOWED_WEBHOOK_ACTIONS:
+            data = pick_data(json)
             if json['action']['type'] == 'updateCard':
-                q.enqueue(worker.payload_teamboard_update_card, json)
+                q.enqueue(worker.payload_teamboard_update_card, data)
+            if json['action']['type'] == 'updateLabel':
+                q.enqueue(
+                    worker.payload_update_label,
+                    Config.TRELOLO_MAIN_BOARD,
+                    data
+                )
+            if json['action']['type'] == 'deleteCard':
+                q.enqueue(worker.payload_delete_card, data)
+            if json['action']['type'] in (
+                'addLabelToCard',
+                'addChecklistToCard',
+                'updateCheckItemStateOnCard',
+                'removeLabelFromCard'
+            ):
+                q.enqueue(
+                    worker.payload_generic_event,
+                    Config.TRELOLO_MAIN_BOARD,
+                    data
+                )
     return __name__
 
 
@@ -40,7 +76,28 @@ def teamboard_webhook():
 )
 def mainboard_webhook():
     if request.method == 'POST':
-        pass
+        json = request.json
+        if json['action']['type'] in ALLOWED_WEBHOOK_ACTIONS:
+            data = pick_data(json)
+            if json['action']['type'] == 'updateLabel':
+                q.enqueue(
+                    worker.payload_update_label,
+                    Config.TRELOLO_TOP_BOARD,
+                    data
+                )
+            if json['action']['type'] == 'deleteCard':
+                q.enqueue(worker.payload_delete_card, data)
+            if json['action']['type'] in (
+                'addLabelToCard',
+                'addChecklistToCard',
+                'updateCheckItemStateOnCard',
+                'removeLabelFromCard'
+            ):
+                q.enqueue(
+                    worker.payload_generic_event,
+                    Config.TRELOLO_TOP_BOARD,
+                    data
+                )
     return __name__
 
 

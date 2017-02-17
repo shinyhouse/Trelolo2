@@ -16,9 +16,20 @@ client.setup_trelolo(
     Config.WEBHOOK_URL
 )
 
+client.setup_gitlab(
+    Config.GITLAB_URL, Config.GITLAB_TOKEN
+)
 
-def payload_teamboard_update_card(json):
-    data = json['action']['data']
+
+def get_card_from_db(card_id):
+    try:
+        return models.Cards.query.filter_by(card_id=card_id).first()
+        logger.info(card_id)
+    except IndexError:
+        return False
+
+
+def payload_teamboard_update_card(data):
     try:
         client.handle_teamboard_update_card(
             data['card']['id'],
@@ -29,16 +40,38 @@ def payload_teamboard_update_card(json):
         pass
 
 
-def payload_teamboard_add_label(json):
-    print(json)
+def payload_update_label(parent_board_id, data):
+    try:
+        client.handle_update_label(
+            parent_board_id,
+            data['old']['name'],
+            data['label']['name']
+        )
+    except KeyError:
+        pass
 
 
-def payload_teamboard_remove_label(json):
-    print(json)
+def payload_delete_card(data):
+    card = get_card_from_db(data['card']['id'])
+    try:
+        if card:
+            client.handle_delete_card(card)
+    except KeyError:
+        pass
 
 
-# DB
+def payload_generic_event(parent_board_id, data):
+    try:
+        client.handle_generic_event(
+            parent_board_id,
+            data['card']['id'],
+            get_card_from_db(data['card']['id'])
+        )
+    except KeyError:
+        pass
 
+
+# these are run from manage.py (be careful)
 def unhook_all():
     for hook in client.list_hooks(client.resource_owner_key):
         found = models.Boards.query.filter_by(
@@ -52,7 +85,7 @@ def unhook_all():
 
 
 def hook_teamboard(board_id):
-    exclude = client.boards.keys()
+    exclude = client.board_data.keys()
     for board in client.list_boards():
         if board.id not in exclude and \
          board.id == board_id and \
@@ -76,7 +109,8 @@ def hook_teamboard(board_id):
 
             for card in board.open_cards():
                 if card.labels:
-                    label = card.labels[-1]
+                    pass
+                    # label = card.labels[-1]
     return True
 
 
