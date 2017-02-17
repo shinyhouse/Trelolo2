@@ -43,8 +43,6 @@ class CardDescription(object):
 
     INIT_DESCRIPTION = '----\n' \
                        'owner:\n' \
-                       'group email:\n' \
-                       'slack channel:\n' \
                        'members:\n' \
                        'delivery time:'
 

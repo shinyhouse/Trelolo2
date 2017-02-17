@@ -274,22 +274,42 @@ class Trelolo(TrelloClient, GitLabMixin):
         newfound = {k: v for k, v in fetched.items() if k not in stored.keys()}
 
         for k, target in newfound.items():
+            # delete duplicate item
+            # card.checklists[0].delete_checklist_item(target['title'])
+            cl = card.checklists[0]
+            for ei in cl.items:
+                if ei['name'] == target['title']:
+                    logger.error(
+                        'removing duplicate item: {}'.format(
+                            ei['id']
+                        )
+                    )
+                    # @HACK custom trello API call
+                    # since there seem to be a bug
+                    # when deleting item via delete_checklist_item(name)
+                    self.fetch_json(
+                        '/checklists/{}/checkItems/{}'.format(
+                            cl.id, ei['id']
+                        ),
+                        http_method='DELETE'
+                    )
+                    del ei
             # append to checklist
-            card.checklists[0].add_checklist_item(
-                target['title'], not target['opened']
+            item = card.checklists[0].add_checklist_item(
+                target['title'], target['checked']
             )
             # update db
             issue = models.Issues(
                 issue_id=target['id'],
                 project_id=target['project_id'],
                 parent_card_id=card.id,
-                item_id='',
+                item_id=item['id'],
                 item_name=target['title'],
                 label='',
                 milestone='',
                 hook_id='',
                 hook_url='',
-                checked=target['opened'],
+                checked=target['checked'],
                 target_type=target_type
             )
             db.session.add(issue)
@@ -300,7 +320,7 @@ class Trelolo(TrelloClient, GitLabMixin):
                 target['description'][1].append(
                     trello_link
                 )
-                logger.info(self.update_gl_description(
+                logger.info(self.update_gl_desc(
                     target['project_id'],
                     target_url,
                     target['id'],
@@ -481,6 +501,9 @@ class Trelolo(TrelloClient, GitLabMixin):
                     hook_url=item['hook_url']
                 )
                 db.session.add(new_card)
+                logger.info(
+                    'new mainboard card {}'.format(card.name)
+                )
             else:
                 upd = self.update_checklist_item(
                     child['title'], child['state'], stored_card
@@ -578,3 +601,35 @@ class Trelolo(TrelloClient, GitLabMixin):
         db.session.delete(stored_card)
         db.session.commit()
         logger.info("deleteCard payload handled succesfully")
+
+    def handle_gitlab_state_change(self, project_id, id, type, state):
+        stored_targets = models.Issues.query.filter_by(
+            project_id=str(project_id),
+            issue_id=str(id),
+            target_type=type
+        ).all()
+        for target in stored_targets:
+            try:
+                card = self.get_card(target.parent_card_id)
+                card.fetch(eager=False)
+                try:
+                    cl = card.fetch_checklists()[0]
+                    item = self.get_checklist_item(cl, target.item_id)
+                    cl.set_checklist_item(item['name'], state)
+                    target.checked = state
+                except:
+                    logger.error(
+                        'could not fetch a checklist for card {}'.format(
+                            card.name
+                        )
+                    )
+            except ResourceUnavailable:
+                logger.error(
+                    'could not get trello card {} for GL target {}'.format(
+                        target.parent_card_id, id
+                    )
+                )
+        db.session.commit()
+        logger.info(
+            'succesfully synced trello GL items with GL target'
+        )

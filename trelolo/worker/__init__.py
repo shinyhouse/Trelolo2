@@ -32,9 +32,7 @@ def get_card_from_db(card_id):
 def payload_teamboard_update_card(data):
     try:
         client.handle_teamboard_update_card(
-            data['card']['id'],
-            data['old']['desc'],
-            data['card']['desc']
+            data['card']['id'], data['old']['desc'], data['card']['desc']
         )
     except KeyError:
         pass
@@ -43,9 +41,7 @@ def payload_teamboard_update_card(data):
 def payload_update_label(parent_board_id, data):
     try:
         client.handle_update_label(
-            parent_board_id,
-            data['old']['name'],
-            data['label']['name']
+            parent_board_id, data['old']['name'], data['label']['name']
         )
     except KeyError:
         pass
@@ -62,10 +58,18 @@ def payload_delete_card(data):
 
 def payload_generic_event(parent_board_id, data):
     try:
+        stored_card = get_card_from_db(data['card']['id'])
         client.handle_generic_event(
-            parent_board_id,
-            data['card']['id'],
-            get_card_from_db(data['card']['id'])
+            parent_board_id, data['card']['id'], stored_card
+        )
+    except KeyError:
+        pass
+
+
+def payload_gitlab(data):
+    try:
+        client.handle_gitlab_state_change(
+            data['project_id'], data['id'], data['type'], data['state']
         )
     except KeyError:
         pass
@@ -108,14 +112,30 @@ def hook_teamboard(board_id):
                 db.session.commit()
 
             for card in board.open_cards():
-                if card.labels:
-                    pass
-                    # label = card.labels[-1]
+                card_list = card.get_list()
+                # ignore archived lists
+                if not card_list.closed:
+                    logger.warning(
+                        'fetching GL targets for card {}'.format(card.name)
+                    )
+                    # gitlab targets -> teamboard cards
+                    client.handle_teamboard_update_card(
+                        card.id, '', card.description
+                    )
+                    logger.warning(
+                        'searching suitable mainboard card for card {}'.format(
+                            card.name
+                        )
+                    )
+                    # teamboard cards -> main board
+                    client.handle_generic_event(
+                        Config.TRELOLO_MAIN_BOARD, card.id, None
+                    )
     return True
 
 
 def unhook_teamboard(board_id):
-    hooks = client.list_hooks(client.resource_owner_key)
+    hooks = client.list_hooks(token=client.resource_owner_key)
     for board in client.list_boards():
         for hook in hooks:
             if board.id == board_id:

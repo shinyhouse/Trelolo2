@@ -13,14 +13,6 @@ ALLOWED_WEBHOOK_ACTIONS = (
 )
 
 
-q = Queue(
-    connection=rq_connect,
-    default_timeout=Config.QUEUE_TIMEOUT
-)
-
-bp = Blueprint('trello', __name__)
-
-
 def pick_data(json):
     data = json['action']['data']
     picked = {
@@ -35,6 +27,14 @@ def pick_data(json):
         except KeyError:
             pass
     return picked
+
+
+q = Queue(
+    connection=rq_connect,
+    default_timeout=Config.QUEUE_TIMEOUT
+)
+
+bp = Blueprint('trello', __name__)
 
 
 @bp.route(

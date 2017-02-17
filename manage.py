@@ -4,10 +4,9 @@ from flask_migrate import Migrate, MigrateCommand
 from flask_script import Manager, Shell, Server
 from rq import Worker, Queue, Connection
 from trelolo import create_app
-from trelolo.rq_connect import rq_connect
-from trelolo import models
-from trelolo.worker import unhook_all
 from trelolo.extensions import db
+from trelolo.rq_connect import rq_connect
+from trelolo.worker import unhook_all
 
 
 def _make_context():

@@ -50,13 +50,13 @@ class GitLabMixin(object):
         try:
             return (gitlab, parts[1].split('\r\n'))
         except (IndexError, TypeError):
-            return (gitlab, [])
+            return [gitlab, []]
 
     def update_gl_desc(self, project_id, target_url, issue_id, desc):
         data = {
             'description': '\r\n\r\n{}\r\n\r\n'.format(
                 '### Trello Cards:'
-            ).join([desc[0], "\r\n".join(desc[1])])
+            ).join([desc[0], "\r\n".join([v for v in desc[1] if v])])
         }
         url = "{}/api/v3/projects/{}/{}/{}?access_token={}".format(
             self.gitlab_url,
@@ -112,6 +112,7 @@ class GitLabMixin(object):
                     description = self.parse_gl_target_desc(
                         data['description']
                     )
+                    logger.info(data)
                     return {
                         'project_id': data['project_id'],
                         'id': data['id'],
@@ -119,7 +120,7 @@ class GitLabMixin(object):
                         'title': '[{} / {}]({})'.format(
                             project_name, data['title'], data['web_url']
                         ),
-                        'opened': data['state'] == 'opened',
+                        'checked': data['state'] not in ('opened', 'reopened'),
                         'description': description
                     }
                 except KeyError:
