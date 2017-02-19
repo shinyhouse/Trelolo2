@@ -1,5 +1,4 @@
 from enum import Enum
-import json
 import logging
 import re
 import requests
@@ -130,15 +129,58 @@ class GitLabMixin(object):
         except (AttributeError, TypeError):
             pass
 
-    def create_label(self, project_id, name):
-        url = '{}/projects/{}/labels?access_token={}'.format(
+    def create_gl_label(self, project_id, name):
+        url = '{}/api/v3/projects/{}/labels?access_token={}'.format(
             self.gitlab_url, project_id, self.gitlab_token
         )
-        label_data = {
-            'name': name,
-            'color': '#5843AD'
-        }
-        r = requests.post(url, label_data)
-        logger.info(
-            'create label: {}'.format(json.dumps(r, indent=4))
+        try:
+            requests.post(url, {
+                'name': name,
+                'color': '#5843AD'
+            })
+        except Exception as e:
+            logger.error(
+                'error creating gitlab label {}: {}'.format(name, str(e))
+            )
+
+    def add_gl_label(self, project_id, id, target_url, name):
+        url = '{}/api/v3/projects/{}/{}/{}?access_token={}'.format(
+            self.gitlab_url, project_id, target_url, id, self.gitlab_token
         )
+        try:
+            r = requests.get(url)
+            labels = r.json()['labels']
+            if name not in labels:
+                labels.append(name)
+            r = requests.put(url, {
+                'labels': ','.join(labels)
+            })
+            logger.info(
+                'setting labels for issue {}: {}'.format(id, labels)
+            )
+        except Exception as e:
+            logger.error(
+                'error adding gitlab label {} to {}: {}'.format(
+                    name, id, str(e)
+                )
+            )
+
+    def remove_gl_label(self, project_id, id, target_url, name):
+        url = '{}/api/v3/projects/{}/{}/{}?access_token={}'.format(
+            self.gitlab_url, project_id, target_url, id, self.gitlab_url
+        )
+        try:
+            r = requests.get(url)
+            labels = r.json()['labels']
+            if name in labels:
+                labels.remove(name)
+            r = requests.put(url, {
+                'labels': ','.join(labels)
+            })
+            logger.info(
+                'removing labels from issue {}: {}'.format(id, labels)
+            )
+        except Exception as e:
+            logger.error(
+                'error removing label from {}: {}'.format(id, str(e))
+            )

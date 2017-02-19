@@ -62,6 +62,18 @@ def payload_generic_event(parent_board_id, data):
         client.handle_generic_event(
             parent_board_id, data['card']['id'], stored_card
         )
+        # okr exception
+        if parent_board_id == Config.TRELOLO_TOP_BOARD:
+            label = data['label']['name']
+            if not label.startswith('OKR:'):
+                return False
+            card = client.get_card(data['card']['id'])
+            if data['action'] == 'addLabelToCard':
+                client.add_okr_label(
+                    card, label, data['label']['color']
+                )
+            if data['action'] == 'removeLabelFromCard':
+                client.remove_okr_label(card, label)
     except KeyError:
         pass
 
@@ -75,7 +87,7 @@ def payload_gitlab(data):
         pass
 
 
-# these are run from manage.py (be careful)
+# these are run only from manage.py (be careful)
 def unhook_all():
     for hook in client.list_hooks(client.resource_owner_key):
         found = models.Boards.query.filter_by(
