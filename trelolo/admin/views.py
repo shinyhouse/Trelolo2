@@ -1,17 +1,20 @@
+import csv
+import io
 from functools import wraps
 from flask import (
-    Blueprint, current_app, jsonify, render_template, request, Response
+    Blueprint, current_app, flash, jsonify,
+    render_template, redirect, request, Response, url_for
 )
 from rq import Queue
 
 from ..config import Config
-from ..rq_connect import rq_connect
+from ..extensions import db, rq
 from trelolo import models
 from trelolo import worker
 
 
 q = Queue(
-    connection=rq_connect,
+    connection=rq,
     default_timeout=Config.QUEUE_TIMEOUT
 )
 
@@ -49,6 +52,27 @@ def show_job_state(id):
         if job:
             state = q.fetch_job(id).is_finished
     return jsonify(state=state)
+
+
+@bp.route('/config/upload', methods=['POST'])
+@requires_auth
+def upload():
+    if request.method == 'POST':
+        file = request.files['file']
+        try:
+            db.session.query(models.Emails).delete()
+            stream = io.StringIO(
+                file.stream.read().decode("UTF8"), newline=None
+            )
+            csv_input = csv.reader(stream)
+            for row in csv_input:
+                email = models.Emails(username=row[0], email=row[1])
+                db.session.add(email)
+            db.session.commit()
+            flash('Emails have been imported')
+        except:
+            flash('Something went wrong')
+        return redirect(url_for('admin_page.show_config'))
 
 
 @bp.route('/config', methods=['GET', 'POST'])

@@ -2,7 +2,7 @@ from flask import Blueprint, request
 from rq import Queue
 
 from trelolo.config import Config
-from trelolo.rq_connect import rq_connect
+from trelolo.extensions import rq
 from trelolo import worker
 
 ALLOWED_WEBHOOK_ACTIONS = ('close', 'reopen')
@@ -21,7 +21,7 @@ def pick_data(json):
 
 
 q = Queue(
-    connection=rq_connect,
+    connection=rq,
     default_timeout=Config.QUEUE_TIMEOUT
 )
 
