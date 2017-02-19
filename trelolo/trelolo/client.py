@@ -59,7 +59,7 @@ class Trelolo(TrelloClient, GitLabMixin):
 
     def does_webhook_exist(self, model_id):
         return any(
-            i for i in self.list_hooks(self.resource_owner_key)
+            i for i in self.list_hooks(token=self.resource_owner_key)
             if i.id_model == model_id
         )
 
@@ -71,7 +71,7 @@ class Trelolo(TrelloClient, GitLabMixin):
 
     def list_team_boards(self):
         boards = []
-        team_boards = models.Boards.query.filter_by(type=3)
+        team_boards = models.Boards.query.filter_by(type=3).all()
         for b in team_boards:
             board = self.get_board(b.trello_id)
             boards.append(board)
@@ -79,9 +79,11 @@ class Trelolo(TrelloClient, GitLabMixin):
 
     def list_sub_cards(self, parent_card):
         cards = []
-        sub_cards = models.Cards.query.filter_by(parent_card_id=parent_card.id)
+        sub_cards = models.Cards.query.filter_by(
+            parent_card_id=parent_card.id
+        ).all()
         for card in sub_cards:
-            card = self.get_card(card['card_id'])
+            card = self.get_card(card.card_id)
             card.fetch(eager=False)
             cards.append(card)
         return cards
@@ -93,57 +95,47 @@ class Trelolo(TrelloClient, GitLabMixin):
         """
         Adds the OKR label to gitlab issues
         """
-        issues = models.Issues.query.filter_by(parent_card_id=parent_card.id)
-        logger.debug("found {} issues for card {}"
-                     .format(len(issues), parent_card.name))
+        issues = models.Issues.query.filter_by(
+            parent_card_id=parent_card.id
+        ).all()
         for issue in issues:
-            project_id = issue['project_id']
+            project_id = issue.project_id
             logger.info(
-                'Adding label to issue {}/{}'.format(project_id, issue['id'])
+                'adding label to issue {}/{}'.format(project_id, issue.id)
             )
             try:
-                self.create_label(project_id, label)
+                self.create_gl_label(project_id, label)
             except Exception as e:
                 logger.error(
                     'error creating gitlab label {}: {}'.format(label, str(e))
                 )
             try:
-                for source in self.sources:
-                    try:
-                        if source.TARGET_TYPE == issue['target_type']:
-                            source.add_label(
-                                project_id, issue['issue_id'],
-                                label
-                            )
-                    except AttributeError:
-                        pass
+                self.add_gl_label(
+                    project_id,
+                    issue.issue_id,
+                    'issues' if issue.target_type == 'issue'
+                    else 'merge_requests',
+                    label
+                )
             except Exception as e:
                 logger.error(
                     'error adding gitlab label {} to issue {}: {}'.format(
-                        label, issue['issue_id'], str(e)
+                        label, issue.issue_id, str(e)
                     )
                 )
 
-    def okr_label_added(self, data, data_storage, board_data):
+    def add_okr_label(self, card, label, color):
         """
         Adds an OKR label to team cards and gitlab issues.
         """
-        label = data['data']['label']['name']
-        color = data['data']['label']['color']
-        logger.info("Adding {} label to team cards/gitlab issues"
-                    .format(label))
         try:
-            # prepare data
-            card = self.get_card(data['id'])
             # load team labels
             team_labels = {}
             for tboard in self.list_team_boards():
-                tlabel = helpers.find_label(tboard.get_labels(), label)
+                tlabel = self.find_label(tboard.get_labels(), label)
                 # create label if does not exist on board
                 if not tlabel:
-                    tlabel = self.trello_source.add_label_to_board(
-                        tboard, label, color
-                    )
+                    tlabel = tboard.add_label(label, color)
                 if tlabel:
                     team_labels[tboard.id] = tlabel
             # add label to teamboard cards
@@ -154,78 +146,69 @@ class Trelolo(TrelloClient, GitLabMixin):
                     if tlabel:
                         tcard.add_label(tlabel)
                 except Exception as e:
-                    logger.error("Error adding OKR label to card {}: {}"
-                                 .format(tcard.name, str(e)))
+                    logger.error(
+                        'error adding OKR label to card {}: {}'.format(
+                            tcard.name, str(e)
+                        )
+                    )
                 # add label to gitlab issues
                 self.add_label_to_gitlab_issues(tcard, label)
         except Exception as e:
-            logger.error("Error adding OKR label: {}"
-                         .format(str(e)))
+            logger.error('error adding OKR label: {}'.format(str(e)))
 
     def add_okr_label_to_card(self, card, okr_label):
-        logger.info("Adding OKR label %s to card %s",
-                    okr_label.name,
-                    card.name)
-
         tboard = card.board
         label, color = (okr_label.name, okr_label.color)
-        tlabel = helpers.find_label(tboard.get_labels(), label)
-
+        tlabel = self.find_label(tboard.get_labels(), label)
         if not tlabel:
-            tlabel = self.trello_source.add_label_to_board(
-                tboard, label, color
-            )
-
+            tlabel = tboard.add_label(label, color)
         if tlabel:
             try:
                 card.add_label(tlabel)
             except Exception as e:
-                logger.error("Error adding OKR label to card {}: {}"
-                             .format(card.name, str(e)))
-
-            # add label to gitlab issues
+                logger.error(
+                    'error adding OKR label to card {}: {}'.format(
+                        card.name, str(e)
+                    )
+                )
             self.add_label_to_gitlab_issues(card, label)
 
     def remove_label_from_gitlab_issues(self, parent_card, label):
-        issues = models.Issues.query.filter_by(parent_card_id=parent_card.id)
-        logger.debug("Found {} issues for card {}"
-                     .format(len(issues), parent_card.name))
+        issues = models.Issues.query.filter_by(
+            parent_card_id=parent_card.id
+        ).all()
         for issue in issues:
-            project_id = issue['project_id']
-            logger.debug("Removing label from issue {}/{}"
-                         .format(project_id, issue['id']))
+            project_id = issue.project_id
+            logger.info(
+                'removing label from issue {}/{}'.format(
+                    project_id, issue.id
+                )
+            )
             try:
-                for source in self.sources:
-                    try:
-                        if source.TARGET_TYPE == issue['target_type']:
-                            source.remove_label(
-                                project_id, issue['issue_id'],
-                                label
-                            )
-                    except AttributeError:
-                        pass
+                self.remove_gl_label(
+                    project_id,
+                    issue.issue_id,
+                    'issues' if issue.target_type == 'issue'
+                    else 'merge_requests',
+                    label
+                )
             except Exception as e:
-                logger.error("Error removing label {} from issue {}: {}"
-                             .format(label, issue['issue_id'], str(e)))
+                logger.error(
+                    'error removing label {} from issue {}: {}'.format(
+                        label, issue.issue_id, str(e)
+                    )
+                )
 
-    def okr_label_removed(self, data, data_storage, board_data):
+    def remove_okr_label(self, card, label):
         """
         Removes the OKR label from team cards and gitlab issues.
         """
-        label = data['data']['label']['name']
-        logger.info("Removing {} label from team cards/gitlab issues"
-                    .format(label))
         try:
-            # prepare data
-            card = self.get_card(data['id'])
-            # load team labels
             team_labels = {}
             for tboard in self.list_team_boards():
-                tlabel = helpers.find_label(tboard.get_labels(), label)
+                tlabel = self.find_label(tboard.get_labels(), label)
                 if tlabel:
                     team_labels[tboard.id] = tlabel
-
-            # remove label from teamboard cards
             team_board_cards = self.list_sub_cards(card)
             for tcard in team_board_cards:
                 try:
@@ -233,14 +216,14 @@ class Trelolo(TrelloClient, GitLabMixin):
                     if tlabel:
                         tcard.remove_label(tlabel)
                 except Exception as e:
-                    logger.error("Error removing OKR label from card {}: {}"
-                                 .format(tcard.name, str(e)))
-
-                # remove label from gitlab issues
+                    logger.error(
+                        'error removing OKR label from card {}: {}'.format(
+                            tcard.name, str(e)
+                        )
+                    )
                 self.remove_label_from_gitlab_issues(tcard, label)
         except Exception as e:
-            logger.error("Error removing OKR label: {}"
-                         .format(str(e)))
+            logger.error('error removing OKR label: {}'.format(str(e)))
 
     def handle_targets(self,
                        card,
@@ -249,11 +232,7 @@ class Trelolo(TrelloClient, GitLabMixin):
                        target_url='issues',
                        target_type='issue',
                        tag='GLIS'):
-        """
-        help to separate GL issues from merge requests
-        return actual state of targets in db as well as
-        new-found target info for a specific target type
-        """
+
         trello_link = '* {}'.format(card.url)
 
         stored = {'{}*{}*{}'.format(
@@ -274,8 +253,6 @@ class Trelolo(TrelloClient, GitLabMixin):
         newfound = {k: v for k, v in fetched.items() if k not in stored.keys()}
 
         for k, target in newfound.items():
-            # delete duplicate item
-            # card.checklists[0].delete_checklist_item(target['title'])
             cl = card.checklists[0]
             for ei in cl.items:
                 if ei['name'] == target['title']:
@@ -285,8 +262,6 @@ class Trelolo(TrelloClient, GitLabMixin):
                         )
                     )
                     # @HACK custom trello API call
-                    # since there seem to be a bug
-                    # when deleting item via delete_checklist_item(name)
                     self.fetch_json(
                         '/checklists/{}/checkItems/{}'.format(
                             cl.id, ei['id']
@@ -357,7 +332,7 @@ class Trelolo(TrelloClient, GitLabMixin):
                                      old_desc,
                                      new_desc):
         """
-        check for GL targets in a teamboard's card description
+        seeks for GL targets in a teamboard's card description
         example:
         <
         $GLIS:<project_id>:<id>
@@ -501,9 +476,12 @@ class Trelolo(TrelloClient, GitLabMixin):
                     hook_url=item['hook_url']
                 )
                 db.session.add(new_card)
-                logger.info(
-                    'new mainboard card {}'.format(card.name)
+                okr_label = next(
+                    (label for label in card.labels
+                     if label.name.startswith('OKR:')), None
                 )
+                if okr_label:
+                    self.add_okr_label_to_card(child['card'], okr_label)
             else:
                 upd = self.update_checklist_item(
                     child['title'], child['state'], stored_card
@@ -546,7 +524,6 @@ class Trelolo(TrelloClient, GitLabMixin):
         card = self.get_card(stored_card.parent_card_id)
         card.fetch(eager=False)
         cl = card.fetch_checklists()[0]
-        logger.info(cl)
         item = self.get_checklist_item(cl, stored_card.item_id)
         logger.info(
             'updating item {} on card {}'.format(
