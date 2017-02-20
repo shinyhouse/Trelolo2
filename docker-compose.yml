@@ -26,7 +26,6 @@ services:
     container_name: worker
     image: kiwi.com/trelolo:latest
     build: .
-    tty: true
     env_file: .env
     volumes:
       - $PWD:/usr/src/app
