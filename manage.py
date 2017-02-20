@@ -4,8 +4,7 @@ from flask_migrate import Migrate, MigrateCommand
 from flask_script import Manager, Shell, Server
 from rq import Worker, Queue, Connection
 from trelolo import create_app
-from trelolo.extensions import db
-from trelolo.rq_connect import rq_connect
+from trelolo.extensions import db, rq
 from trelolo.worker import unhook_all
 
 
@@ -27,7 +26,7 @@ manager.add_command('db', MigrateCommand)
 
 with app.app_context():
     q = Queue(
-        connection=rq_connect,
+        connection=rq,
         default_timeout=app.config.get('QUEUE_TIMEOUT')
     )
 
@@ -39,7 +38,7 @@ def unhookall():
 
 @manager.command
 def work():
-    with Connection(rq_connect):
+    with Connection(rq):
         worker = Worker(map(Queue, ['high', 'default', 'low']))
         worker.work()
 

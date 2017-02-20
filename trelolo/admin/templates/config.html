@@ -15,6 +15,13 @@
     <div style="width: 100%;">
     <div style="width: 50%; margin: 0 auto;">
     <h1>Trelolo</h1>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <p>{{ message }}</p>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
     <ul>
         <li><strong>Top Board {{inuse[0]}}</strong></li>
         <li><strong>Main Board {{inuse[1]}}</strong></li>
@@ -46,6 +53,10 @@
 
             {% endif %}
     {% endfor %}
+    </form>
+    <h4>Upload CSV file with Trello emails:</h4>
+    <form action="/config/upload" method=post enctype=multipart/form-data>
+      <p><input type=file name=file><input type=submit value=Upload>
     </form>
     </div>
     </div>
