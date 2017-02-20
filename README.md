@@ -53,9 +53,9 @@ Required environment variables are:
 - `TRELOLO_TOP_BOARD`
 - `GITLAB_URL`
 - `GITLAB_TOKEN` (OAuth access token)
-- `REDIS`
-- `FLASK_HOST`
-- `FLASK_PORT`
+- `REDIS` (redis://redis:6379)
+- `FLASK_HOST` (0.0.0.0)
+- `FLASK_PORT` (5000)
 - `SQLALCHEMY_DATABASE_URI` (optional on local)
-- `ADMIN_USERNAME`
+- `ADMIN_USER`
 - `ADMIN_PASSWORD`
