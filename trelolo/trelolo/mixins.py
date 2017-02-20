@@ -111,13 +111,23 @@ class GitLabMixin(object):
                     description = self.parse_gl_target_desc(
                         data['description']
                     )
+
+                    # older versions of gitlab do not include web_url in response
+                    try:
+                        web_url = data['web_url']
+                    except (KeyError, AttributeError):
+                        web_url = "{}/projects/{}/{}/{}".format(
+                            self.gitlab_url,
+                            project_name, target_url, match[1]
+                        )
+
                     logger.info(data)
                     return {
                         'project_id': data['project_id'],
                         'id': data['id'],
-                        'url': data['web_url'],
+                        'url': web_url,
                         'title': '[{} / {}]({})'.format(
-                            project_name, data['title'], data['web_url']
+                            project_name, data['title'], web_url
                         ),
                         'checked': data['state'] not in ('opened', 'reopened'),
                         'description': description
