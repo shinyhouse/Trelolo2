@@ -15,14 +15,18 @@ def format_itemname(completeness, url, listname):
         return "{} (#{})".format(url, listname)
 
 
-def format_teamboard_card_descritpion(old_desc, new_desc):
-    init_desc = "Main Board: {}\n\n-----\n{}"
-    parts = old_desc.split("-----\n")
-    if parts[0].startswith('Main Board: '):
-        desc = init_desc.format(new_desc, parts[1]) \
-         if new_desc else parts[1]
+def format_teamboard_card_descritpion(desc_title, old_desc, new_desc):
+    init_desc = '{}: {}\n\n-----\n{}'
+    parts = old_desc.split('-----\n')
+    desc = ''
+    if parts[0].startswith('{}: '.format(desc_title)):
+        # try:
+        desc = init_desc.format(desc_title, new_desc, parts[1]) \
+        #     if new_desc else parts[1]
+        #except IndexError:
+        #    pass
     else:
-        desc = init_desc.format(new_desc, old_desc) \
+        desc = init_desc.format(desc_title, new_desc, old_desc) \
          if new_desc else old_desc
     return desc
 

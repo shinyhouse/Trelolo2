@@ -5,16 +5,24 @@ from trelolo.config import Config
 from trelolo.extensions import rq
 from trelolo import worker
 
-ALLOWED_WEBHOOK_ACTIONS = ('close', 'reopen')
+ALLOWED_WEBHOOK_ACTIONS = ('open', 'update', 'close', 'reopen')
 
 
 def pick_data(json):
     data = json['object_attributes']
     picked = {
         'action': data['action'],
-        'project_id': data['project_id'],
+        'project_id': data['source_project_id'] if hasattr(
+                        data, 'source_project_id') else data['project_id'],
         'id': data['id'],
+        'title': data['title'],
+        'url': data['url'],
+        'milestone_id': data['milestone_id'],
+        'description': data['description'],
         'type': 'issue' if json['object_kind'] != 'merge_request' else 'mr',
+        'target_url': 'issues'
+                      if json['object_kind'] != 'merge_request'
+                      else 'merge_requests',
         'state': data['state'] not in ('opened', 'reopened')
     }
     return picked
@@ -37,5 +45,8 @@ def gitlab_webhook():
         json = request.json
         if json['object_attributes']['action'] in ALLOWED_WEBHOOK_ACTIONS:
             data = pick_data(json)
-            q.enqueue(worker.payload_gitlab, data)
+            if json['object_attributes']['action'] in ('close', 'reopen'):
+                q.enqueue(worker.payload_gitlab_state_change, data)
+            else:
+                q.enqueue(worker.payload_gitlab_generic_event, data)
     return __name__

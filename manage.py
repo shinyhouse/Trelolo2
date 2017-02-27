@@ -20,7 +20,11 @@ migrate = Migrate(app, db)
 
 manager = Manager(app)
 manager.add_command('shell', Shell(make_context=_make_context))
-manager.add_command('runserver', Server(host=app.config['FLASK_HOST']))
+manager.add_command(
+    'runserver', Server(
+        host=app.config['FLASK_HOST'], port=app.config['FLASK_PORT']
+    )
+)
 manager.add_command('db', MigrateCommand)
 
 

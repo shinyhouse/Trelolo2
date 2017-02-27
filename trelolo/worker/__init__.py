@@ -78,7 +78,24 @@ def payload_generic_event(parent_board_id, data):
         pass
 
 
-def payload_gitlab(data):
+def payload_gitlab_generic_event(data):
+    # these values are unfortunately not
+    # in a webhook payload yet
+    data['label'] = client.fetch_gl_labels(
+        data['project_id'], data['target_url'], data['id']
+    )
+    data['milestone'] = client.fetch_gl_milestone(
+        data['project_id'], data['milestone_id']
+    )
+    data['target_title'] = '[{} / {}]({})'.format(
+        client.fetch_gl_project_name(data['project_id']),
+        data['title'],
+        data['url']
+    )
+    client.handle_gitlab_generic_event(data)
+
+
+def payload_gitlab_state_change(data):
     try:
         client.handle_gitlab_state_change(
             data['project_id'], data['id'], data['type'], data['state']
@@ -131,9 +148,9 @@ def hook_teamboard(board_id):
                         'fetching GL targets for card {}'.format(card.name)
                     )
                     # gitlab targets -> teamboard cards
-                    client.handle_teamboard_update_card(
-                        card.id, '', card.description
-                    )
+                    # client.handle_teamboard_update_card(
+                    #    card.id, '', card.description
+                    # )
                     logger.warning(
                         'searching suitable mainboard card for card {}'.format(
                             card.name

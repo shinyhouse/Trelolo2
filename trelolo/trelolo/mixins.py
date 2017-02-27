@@ -51,19 +51,24 @@ class GitLabMixin(object):
         except (IndexError, TypeError):
             return [gitlab, []]
 
-    def update_gl_desc(self, project_id, target_url, issue_id, desc):
+    def format_gl_desc(self, desc):
+        return '\r\n\r\n{}\r\n\r\n'.format(
+            '### Trello Cards:'
+        ).join([desc[0], "\r\n".join([v for v in desc[1] if v])])
+
+    def update_gl_desc(self, project_id, target_url, id, desc):
         data = {
-            'description': '\r\n\r\n{}\r\n\r\n'.format(
-                '### Trello Cards:'
-            ).join([desc[0], "\r\n".join([v for v in desc[1] if v])])
+            'description': self.format_gl_desc(desc)
         }
         url = "{}/api/v3/projects/{}/{}/{}?access_token={}".format(
             self.gitlab_url,
             project_id,
             target_url,
-            issue_id,
+            id,
             self.gitlab_token
         )
+        logger.info(url)
+        logger.info(data)
         r = requests.put(url, data)
         return [r.json(), url, data]
 
@@ -79,6 +84,7 @@ class GitLabMixin(object):
         r = requests.get(url)
         try:
             data = r.json()
+            logger.info(data)
             return self.parse_gl_target_desc(
                 data['description']
             )
@@ -175,7 +181,7 @@ class GitLabMixin(object):
 
     def remove_gl_label(self, project_id, id, target_url, name):
         url = '{}/api/v3/projects/{}/{}/{}?access_token={}'.format(
-            self.gitlab_url, project_id, target_url, id, self.gitlab_url
+            self.gitlab_url, project_id, target_url, id, self.gitlab_token
         )
         try:
             r = requests.get(url)
@@ -192,3 +198,51 @@ class GitLabMixin(object):
             logger.error(
                 'error removing label from {}: {}'.format(id, str(e))
             )
+
+    def fetch_gl_labels(self, project_id, target_url, id):
+        url = '{}/api/v3/projects/{}/{}/{}?access_token={}'.format(
+            self.gitlab_url, project_id, target_url, id, self.gitlab_token
+        )
+        r = requests.get(url)
+        try:
+            try:
+                labels = [l for l in r.json()['labels'] if l[0] == '$']
+                return labels[0][1:]
+            except IndexError:
+                return False
+        except KeyError:
+            return False
+
+    def fetch_gl_milestone(self, project_id, milestone_id):
+        url = '{}/api/v3/projects/{}/milestones/{}?access_token={}'.format(
+            self.gitlab_url, project_id, milestone_id, self.gitlab_token
+        )
+        r = requests.get(url)
+        try:
+            milestone = r.json()['title']
+            return milestone[1:] if milestone[0] == '$' else False
+        except (KeyError, IndexError):
+            return False
+
+    def fetch_gl_project_name(self, project_id):
+        url = "{}/api/v3/projects/{}?access_token={}"
+        url = url.format(
+            self.gitlab_url, project_id, self.gitlab_token
+        )
+        r = requests.get(url)
+        try:
+            data = r.json()
+            project_name = data['name_with_namespace'] \
+                if data['name_with_namespace'] else data['name']
+            return project_name
+        except KeyError:
+            return False
+
+    def fetch_gl_targets_by_label():
+        pass
+
+    def fetch_gl_targets_by_milestone():
+        pass
+
+    def fetch_gl_users():
+        pass

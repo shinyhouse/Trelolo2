@@ -3,8 +3,8 @@ from collections import OrderedDict
 import logging
 from trello import TrelloClient, ResourceUnavailable
 from trelolo.trelolo import helpers
-from trelolo import models
 from trelolo.extensions import db
+from trelolo import models
 
 from .mixins import GitLabMixin
 
@@ -24,11 +24,13 @@ class Trelolo(TrelloClient, GitLabMixin):
         self.board_data = OrderedDict({
             mainboard_id: self.get_board_data(mainboard_id, {
                 'prefix': '#',
-                'remove': True
+                'remove': True,
+                'desc_title': 'Main Board'
             }),
             topboard_id: self.get_board_data(topboard_id, {
                 'prefix': 'OKR:',
-                'remove': True
+                'remove': True,
+                'desc_title': 'Top Board'
             })
         })
         if not self.does_webhook_exist(mainboard_id):
@@ -88,8 +90,35 @@ class Trelolo(TrelloClient, GitLabMixin):
             cards.append(card)
         return cards
 
-    def add_members(self, data):
-        pass
+    def get_members(self, card):
+        members = []
+        for member_id in card.member_ids:
+            members.append(self.get_member_email(member_id))
+        # append mentions
+        if hasattr(card, 'desc'):
+            mentions = helpers.parse_mentions(card.desc)
+            for mention in mentions:
+                email = self.get_member_email(mention)
+                if email not in members:
+                    members.append(email)
+        logger.info(
+            'found members: {}'.format(
+                ','.join(list(members))
+            )
+        )
+        return members
+
+    def get_member_email(self, member_id):
+        try:
+            member = self.get_member(member_id)
+            stored_member = models.Emails.query.filter_by(
+                username=member.username
+            ).first()
+            return stored_member.email
+        except ResourceUnavailable:
+            logger.error(
+                'could not fetch trello member {}'.format(member_id)
+            )
 
     def add_label_to_gitlab_issues(self, parent_card, label):
         """
@@ -425,12 +454,12 @@ class Trelolo(TrelloClient, GitLabMixin):
         card = self.get_card(card_id)
         card.fetch(eager=False)
         label = self.get_label(card.labels, board_data['metadata'])
-        # if label has been changed(removed) on a card
         try:
             if label != stored_card.label:
                 self.remove_checklist_item(stored_card)
                 card.set_description('')
                 db.session.delete(stored_card)
+                stored_card = {}
                 db.session.commit()
         except (AttributeError, TypeError):
             pass
@@ -441,8 +470,10 @@ class Trelolo(TrelloClient, GitLabMixin):
             'title': helpers.format_itemname(
                 completeness, card.url, card.get_list().name
             ),
-            'state': completeness == 100
+            'state': completeness == 100,
+            'members': self.get_members(card)
         }
+        logger.info(label)
         if label:
             if not stored_card:
                 # search for suitable parent cards
@@ -453,6 +484,7 @@ class Trelolo(TrelloClient, GitLabMixin):
                         desc=helpers.CardDescription.INIT_DESCRIPTION
                     )
                 card.fetch(eager=False)
+                logger.info("found card {}".format(card.name))
                 # new item (the whole sub card)
                 item = self.add_checklist_item(
                     card, child['title'], child['state']
@@ -460,7 +492,9 @@ class Trelolo(TrelloClient, GitLabMixin):
                 # update child card description
                 child['card'].set_description(
                     helpers.format_teamboard_card_descritpion(
-                        child['card'].description, card.url
+                        board_data['metadata']['desc_title'],
+                        child['card'].desc,
+                        card.url
                     )
                 )
                 # insert into db
@@ -489,6 +523,13 @@ class Trelolo(TrelloClient, GitLabMixin):
                 if upd and stored_card:
                     stored_card.item_name = child['title']
                     stored_card.checked = child['state']
+        try:
+            parent_card = self.get_card(stored_card.parent_card_id)
+            cd = helpers.CardDescription(parent_card.desc)
+            cd.set_list_value('members', child['members'])
+            parent_card.set_description(cd.get_description())
+        except:
+            logger.error('failed to update parent card')
         # save changes
         db.session.commit()
         try:
@@ -515,7 +556,6 @@ class Trelolo(TrelloClient, GitLabMixin):
             'hook_id': hook.id if hook else '',
             'hook_url': hook.callback_url if hook else ''
         }
-        # self.add_members(data)
 
     def update_checklist_item(self, item_name, checked, stored_card):
         if not stored_card:
@@ -524,10 +564,10 @@ class Trelolo(TrelloClient, GitLabMixin):
         card = self.get_card(stored_card.parent_card_id)
         card.fetch(eager=False)
         cl = card.fetch_checklists()[0]
-        item = self.get_checklist_item(cl, stored_card.item_id)
+        # item = self.get_checklist_item(cl, stored_card.item_id)
         logger.info(
             'updating item {} on card {}'.format(
-                item['name'], card.name)
+                item_name, card.name)
         )
         upd = {}
         # check name change
@@ -570,14 +610,130 @@ class Trelolo(TrelloClient, GitLabMixin):
             logger.error('could not remove checklist item')
         self.remove_webhook(
             stored_card.hook_id,
-            stored_card.card_id
+            stored_card.parent_card_id
         )
 
     def handle_delete_card(self, stored_card):
         self.remove_checklist_item(stored_card)
         db.session.delete(stored_card)
         db.session.commit()
-        logger.info("deleteCard payload handled succesfully")
+        logger.info('card has been succesfully deleted')
+
+    # GITLAB WEBHOOKS
+
+    @staticmethod
+    def check_labels(labels, label):
+        try:
+            return any(
+                l for l in labels if l.name[0] == '$'
+                and l.name[1:] == label
+            )
+        except IndexError:
+            return False
+
+    def get_cards_for_gitlab(self, label, milestone):
+        gl_cards = []
+        for board in self.list_team_boards():
+            cards = board.open_cards()
+            for card in cards:
+                if self.check_labels(card.labels, label):
+                    gl_cards.append(card)
+                if self.check_labels(card.labels, milestone):
+                    gl_cards.append(card)
+        return gl_cards
+
+    def handle_gitlab_generic_event(self, data):
+        stored_targets = models.Issues.query.filter_by(
+            issue_id=str(data['id']),
+            target_type=data['type']
+        ).all()
+        stored_targets = {target.parent_card_id: target
+                          for target in stored_targets}
+        stored_card_ids = [id for id in stored_targets.keys()]
+        logger.info(stored_targets)
+        logger.info(stored_card_ids)
+        cards = self.get_cards_for_gitlab(data['label'], data['milestone'])
+        trello_links = []
+        if cards:
+            for card in cards:
+                card.fetch(eager=False)
+                try:
+                    stored_card_ids.remove(card.id)
+                except ValueError:
+                    pass
+                if card.id in stored_targets.keys():
+                    logger.info('found stored target')
+                    target = stored_targets[card.id]
+                    if data['label'] or data['milestone']:
+                        logger.info(
+                            'updating gitlab item {} on card {}'.format(
+                                target.item_name, card.name)
+                        )
+                        upd = self.update_checklist_item(
+                            data['target_title'], data['state'], target
+                        )
+                        if upd and target:
+                            target.item_name = data['target_title']
+                            target.checked = data['state']
+                        trello_links.append('* {}'.format(card.url))
+                    else:
+                        logger.info(
+                            'removing gitlab item {} from card {}'.format(
+                                target.item_name, card.name)
+                        )
+                        self.remove_checklist_item(target)
+                        db.session.delete(target)
+                else:
+                    logger.info('creating gitlab item')
+                    item = self.add_checklist_item(
+                        card, data['target_title'], data['state']
+                    )
+                    new_item = models.Issues(
+                        issue_id=data['id'],
+                        project_id=data['project_id'],
+                        parent_card_id=card.id,
+                        label=data['label'],
+                        milestone=data['milestone'],
+                        item_id=item['id'],
+                        item_name=data['target_title'],
+                        checked=data['state'],
+                        hook_id='',
+                        hook_url=''
+                    )
+                    trello_links.append('* {}'.format(card.url))
+                    db.session.add(new_item)
+            db.session.commit()
+        else:
+            logger.warning(
+                'no suitable card found on any team-board \
+                 for label: {} or milestone: {}'.format(
+                    data['label'], data['milestone']
+                )
+            )
+        for card_id in stored_card_ids:
+            target = stored_targets[card_id]
+            logger.info(
+                'removing gitlab item {} from card {}'.format(
+                    target.item_name, card_id)
+            )
+            self.remove_checklist_item(target)
+            db.session.delete(target)
+        db.session.commit()
+
+        # update GL target description
+        old_desc = self.parse_gl_target_desc(data['description'])
+        new_desc = self.format_gl_desc([old_desc[0], trello_links])
+
+        logger.info(data['description'])
+        logger.info(new_desc)
+
+        if new_desc != data['description']:
+            self.update_gl_desc(
+                data['project_id'],
+                data['target_url'],
+                data['id'],
+                [old_desc[0], trello_links]
+            )
 
     def handle_gitlab_state_change(self, project_id, id, type, state):
         stored_targets = models.Issues.query.filter_by(
