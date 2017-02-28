@@ -1,7 +1,8 @@
 from flask import Flask
+import logging
 from .config import Config
 from .admin import views
-from .extensions import db, migrate
+from .extensions import db, migrate, sentry
 from .payloads import gitlab, trello
 
 
@@ -17,6 +18,7 @@ def create_app():
     register_blueprints(app)
     db.init_app(app)
     migrate.init_app(app, db)
+    sentry.init_app(app, logging=True, level=logging.ERROR)
     return app
 
 

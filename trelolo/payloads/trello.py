@@ -8,7 +8,7 @@ from trelolo import worker
 
 ALLOWED_WEBHOOK_ACTIONS = (
     'addChecklistToCard', 'addLabelToCard', 'addMemberToCard',
-    'deleteCard', 'removeLabelFromCard', 'updateCard',
+    'deleteCard', 'removeLabelFromCard',
     'updateCheckItemStateOnCard', 'updateLabel'
 )
 
@@ -46,8 +46,6 @@ def teamboard_webhook():
         json = request.json
         if json['action']['type'] in ALLOWED_WEBHOOK_ACTIONS:
             data = pick_data(json)
-            if json['action']['type'] == 'updateCard':
-                q.enqueue(worker.payload_teamboard_update_card, data)
             if json['action']['type'] == 'updateLabel':
                 q.enqueue(
                     worker.payload_update_label,
@@ -59,6 +57,7 @@ def teamboard_webhook():
             if json['action']['type'] in (
                 'addLabelToCard',
                 'addChecklistToCard',
+                'addMemberToCard',
                 'updateCheckItemStateOnCard',
                 'removeLabelFromCard'
             ):
@@ -98,14 +97,4 @@ def mainboard_webhook():
                     Config.TRELOLO_TOP_BOARD,
                     data
                 )
-    return __name__
-
-
-@bp.route(
-    '/callback/trello/card/<card_id>/<issue_id>',
-    methods=['GET', 'POST']
-)
-def card_webhook(card_id, issue_id):
-    if request.method == 'POST':
-        pass
     return __name__
