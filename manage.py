@@ -27,7 +27,6 @@ manager.add_command(
 )
 manager.add_command('db', MigrateCommand)
 
-
 with app.app_context():
     q = Queue(
         connection=rq,

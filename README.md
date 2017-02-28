@@ -59,3 +59,4 @@ Required environment variables are:
 - `SQLALCHEMY_DATABASE_URI` (optional on local)
 - `ADMIN_USER`
 - `ADMIN_PASSWORD`
+- `SENTRY_DSN` (optional)

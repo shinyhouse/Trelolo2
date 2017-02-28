@@ -5,9 +5,11 @@
 #    pip-compile --output-file requirements.txt requirements.ini
 #
 alembic==0.8.10           # via flask-migrate
+blinker==1.4
 click==6.7                # via flask, rq
 colorama==0.3.7           # via rainbow-logging-handler
-Flask-Migrate==2.0.3
+contextlib2==0.5.4        # via raven
+flask-migrate==2.0.3
 flask-script==2.0.5
 flask-sqlalchemy==2.1
 flask==0.12
@@ -15,7 +17,7 @@ httplib2==0.10.3          # via oauth2client
 itsdangerous==0.24        # via flask
 jinja2==2.9.5             # via flask
 logutils==0.3.3           # via rainbow-logging-handler
-Mako==1.0.6               # via alembic
+mako==1.0.6               # via alembic
 markupsafe==0.23          # via jinja2, mako
 oauth2client==4.0.0
 oauthlib==2.0.1           # via requests-oauthlib
@@ -26,6 +28,7 @@ pyasn1==0.2.2             # via oauth2client, pyasn1-modules, rsa
 python-dateutil==2.6.0    # via py-trello
 python-editor==1.0.3      # via alembic
 rainbow-logging-handler==2.2.2
+raven==6.0.0
 redis==2.10.5
 requests-oauthlib==0.7.0  # via py-trello
 requests==2.13.0          # via py-trello, requests-oauthlib

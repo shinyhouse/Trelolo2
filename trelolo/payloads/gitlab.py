@@ -12,8 +12,6 @@ def pick_data(json):
     data = json['object_attributes']
     picked = {
         'action': data['action'],
-        'project_id': data['source_project_id'] if hasattr(
-                        data, 'source_project_id') else data['project_id'],
         'id': data['id'],
         'title': data['title'],
         'url': data['url'],
@@ -23,8 +21,13 @@ def pick_data(json):
         'target_url': 'issues'
                       if json['object_kind'] != 'merge_request'
                       else 'merge_requests',
-        'state': data['state'] not in ('opened', 'reopened')
+        'state': data['state'] not in ('opened', 'reopened'),
+        'assignee_id': data['assignee_id']
     }
+    try:
+        picked['project_id'] = data['source_project_id']
+    except KeyError:
+        picked['project_id'] = data['project_id']
     return picked
 
 

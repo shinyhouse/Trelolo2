@@ -3,7 +3,7 @@ import re
 from collections import OrderedDict
 
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 def format_itemname(completeness, url, listname):
@@ -15,24 +15,21 @@ def format_itemname(completeness, url, listname):
         return "{} (#{})".format(url, listname)
 
 
+def format_trello_link(url):
+    return '* {}'.format(url)
+
+
 def format_teamboard_card_descritpion(desc_title, old_desc, new_desc):
-    init_desc = '{}: {}\n\n-----\n{}'
-    parts = old_desc.split('-----\n')
+    init_desc = '{}: {}\n\n----\n{}'
+    parts = old_desc.split('----\n')
     desc = ''
     if parts[0].startswith('{}: '.format(desc_title)):
-        # try:
         desc = init_desc.format(desc_title, new_desc, parts[1]) \
-        #     if new_desc else parts[1]
-        #except IndexError:
-        #    pass
+            if new_desc else parts[1]
     else:
         desc = init_desc.format(desc_title, new_desc, old_desc) \
          if new_desc else old_desc
     return desc
-
-
-def parse_mentions(desc):
-    return re.findall("@([.\w-]+)", desc)
 
 
 def parse_listname(lst_name):
@@ -55,9 +52,6 @@ class CardDescription(object):
         self.desc_text = ''
         self.data = OrderedDict()
         self._parse()
-        logger.debug(
-            'CardDescription({})'.format(desc)
-        )
 
     def _parse(self):
         x = self.desc.split('----\n')

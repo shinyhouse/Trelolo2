@@ -1,6 +1,7 @@
 import copy
 from collections import OrderedDict
 import logging
+import re
 from trello import TrelloClient, ResourceUnavailable
 from trelolo.trelolo import helpers
 from trelolo.extensions import db
@@ -8,7 +9,7 @@ from trelolo import models
 
 from .mixins import GitLabMixin
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class Trelolo(TrelloClient, GitLabMixin):
@@ -56,7 +57,7 @@ class Trelolo(TrelloClient, GitLabMixin):
                 'metadata': metadata
             }
         except ResourceUnavailable:
-            logger.error('invalid board {}'.format(board_id))
+            log.error('invalid board {}'.format(board_id))
             return False
 
     def does_webhook_exist(self, model_id):
@@ -94,17 +95,15 @@ class Trelolo(TrelloClient, GitLabMixin):
         members = []
         for member_id in card.member_ids:
             members.append(self.get_member_email(member_id))
-        # append mentions
-        if hasattr(card, 'desc'):
-            mentions = helpers.parse_mentions(card.desc)
-            for mention in mentions:
-                email = self.get_member_email(mention)
+        try:
+            found_emails = re.findall('[\w\.-]+@[\w\.-]+', card.desc)
+            for email in found_emails:
                 if email not in members:
                     members.append(email)
-        logger.info(
-            'found members: {}'.format(
-                ','.join(list(members))
-            )
+        except AttributeError:
+            pass
+        log.info(
+            'found members: {}'.format(','.join(list(members)))
         )
         return members
 
@@ -116,7 +115,7 @@ class Trelolo(TrelloClient, GitLabMixin):
             ).first()
             return stored_member.email
         except ResourceUnavailable:
-            logger.error(
+            log.error(
                 'could not fetch trello member {}'.format(member_id)
             )
 
@@ -129,13 +128,13 @@ class Trelolo(TrelloClient, GitLabMixin):
         ).all()
         for issue in issues:
             project_id = issue.project_id
-            logger.info(
+            log.info(
                 'adding label to issue {}/{}'.format(project_id, issue.id)
             )
             try:
                 self.create_gl_label(project_id, label)
             except Exception as e:
-                logger.error(
+                log.error(
                     'error creating gitlab label {}: {}'.format(label, str(e))
                 )
             try:
@@ -147,7 +146,7 @@ class Trelolo(TrelloClient, GitLabMixin):
                     label
                 )
             except Exception as e:
-                logger.error(
+                log.error(
                     'error adding gitlab label {} to issue {}: {}'.format(
                         label, issue.issue_id, str(e)
                     )
@@ -175,7 +174,7 @@ class Trelolo(TrelloClient, GitLabMixin):
                     if tlabel:
                         tcard.add_label(tlabel)
                 except Exception as e:
-                    logger.error(
+                    log.error(
                         'error adding OKR label to card {}: {}'.format(
                             tcard.name, str(e)
                         )
@@ -183,7 +182,7 @@ class Trelolo(TrelloClient, GitLabMixin):
                 # add label to gitlab issues
                 self.add_label_to_gitlab_issues(tcard, label)
         except Exception as e:
-            logger.error('error adding OKR label: {}'.format(str(e)))
+            log.error('error adding OKR label: {}'.format(str(e)))
 
     def add_okr_label_to_card(self, card, okr_label):
         tboard = card.board
@@ -195,7 +194,7 @@ class Trelolo(TrelloClient, GitLabMixin):
             try:
                 card.add_label(tlabel)
             except Exception as e:
-                logger.error(
+                log.error(
                     'error adding OKR label to card {}: {}'.format(
                         card.name, str(e)
                     )
@@ -208,7 +207,7 @@ class Trelolo(TrelloClient, GitLabMixin):
         ).all()
         for issue in issues:
             project_id = issue.project_id
-            logger.info(
+            log.info(
                 'removing label from issue {}/{}'.format(
                     project_id, issue.id
                 )
@@ -222,7 +221,7 @@ class Trelolo(TrelloClient, GitLabMixin):
                     label
                 )
             except Exception as e:
-                logger.error(
+                log.error(
                     'error removing label {} from issue {}: {}'.format(
                         label, issue.issue_id, str(e)
                     )
@@ -245,150 +244,14 @@ class Trelolo(TrelloClient, GitLabMixin):
                     if tlabel:
                         tcard.remove_label(tlabel)
                 except Exception as e:
-                    logger.error(
+                    log.error(
                         'error removing OKR label from card {}: {}'.format(
                             tcard.name, str(e)
                         )
                     )
                 self.remove_label_from_gitlab_issues(tcard, label)
         except Exception as e:
-            logger.error('error removing OKR label: {}'.format(str(e)))
-
-    def handle_targets(self,
-                       card,
-                       targets=[],
-                       stored_targets=[],
-                       target_url='issues',
-                       target_type='issue',
-                       tag='GLIS'):
-
-        trello_link = '* {}'.format(card.url)
-
-        stored = {'{}*{}*{}'.format(
-                    target_type,
-                    target.project_id,
-                    target.issue_id): target
-                  for target in stored_targets
-                  if target.target_type == target_type}
-
-        fetched = [self.fetch_gl_target(
-                    target, target_url, tag) for target in targets]
-
-        fetched = {'{}*{}*{}'.format(
-                    target_type,
-                    target['project_id'],
-                    target['id']): target for target in fetched if target}
-
-        newfound = {k: v for k, v in fetched.items() if k not in stored.keys()}
-
-        for k, target in newfound.items():
-            cl = card.checklists[0]
-            for ei in cl.items:
-                if ei['name'] == target['title']:
-                    logger.error(
-                        'removing duplicate item: {}'.format(
-                            ei['id']
-                        )
-                    )
-                    # @HACK custom trello API call
-                    self.fetch_json(
-                        '/checklists/{}/checkItems/{}'.format(
-                            cl.id, ei['id']
-                        ),
-                        http_method='DELETE'
-                    )
-                    del ei
-            # append to checklist
-            item = card.checklists[0].add_checklist_item(
-                target['title'], target['checked']
-            )
-            # update db
-            issue = models.Issues(
-                issue_id=target['id'],
-                project_id=target['project_id'],
-                parent_card_id=card.id,
-                item_id=item['id'],
-                item_name=target['title'],
-                label='',
-                milestone='',
-                hook_id='',
-                hook_url='',
-                checked=target['checked'],
-                target_type=target_type
-            )
-            db.session.add(issue)
-            db.session.commit()
-
-            # update trello links
-            if trello_link not in target['description'][1]:
-                target['description'][1].append(
-                    trello_link
-                )
-                logger.info(self.update_gl_desc(
-                    target['project_id'],
-                    target_url,
-                    target['id'],
-                    target['description']
-                ))
-
-        # cleanup
-        for k, target in stored.items():
-            if k not in fetched.keys():
-                card.checklists[0].delete_checklist_item(
-                    target.item_name
-                )
-                desc = self.fetch_gl_target_desc(
-                    target.project_id,
-                    target_url,
-                    target.issue_id
-                )
-                # update trello links
-                if desc:
-                    if trello_link in desc[1]:
-                        desc[1].remove(trello_link)
-                    logger.info(self.update_gl_desc(
-                        target.project_id,
-                        target_url,
-                        target.issue_id,
-                        desc
-                    ))
-                # update db
-                db.session.delete(target)
-                db.session.commit()
-
-    def handle_teamboard_update_card(self,
-                                     card_id,
-                                     old_desc,
-                                     new_desc):
-        """
-        seeks for GL targets in a teamboard's card description
-        example:
-        <
-        $GLIS:<project_id>:<id>
-        $GLMR:<project_id>:<id>
-        >
-        """
-        # nothing happens if no change
-        if old_desc is new_desc:
-            return False
-        # load data from storage
-        stored_targets = models.Issues.query.filter_by(
-            parent_card_id=card_id
-        ).all()
-        # get card & its checklist
-        card = self.get_card(card_id)
-        card.fetch(eager=True)
-        if not card.checklists:
-            card.add_checklist(self.CHECKLIST_TITLE, [], [])
-        # parse what we have in an updated description
-        targets = self.parse_gl_targets(new_desc)
-
-        self.handle_targets(
-            card, targets, stored_targets, 'issues', 'issue', 'GLIS'
-        )
-        self.handle_targets(
-            card, targets, stored_targets, 'merge_requests', 'mr', 'GLMR'
-        )
+            log.error('error removing OKR label: {}'.format(str(e)))
 
     @staticmethod
     def get_completeness(card):
@@ -443,7 +306,7 @@ class Trelolo(TrelloClient, GitLabMixin):
             models.Cards.query.filter_by(
                 label=old_label
             ).update({models.Cards.label: new_label})
-            logger.info(
+            log.info(
                 'changed {} label to {}'.format(
                     old_label, new_label
                 )
@@ -473,7 +336,6 @@ class Trelolo(TrelloClient, GitLabMixin):
             'state': completeness == 100,
             'members': self.get_members(card)
         }
-        logger.info(label)
         if label:
             if not stored_card:
                 # search for suitable parent cards
@@ -484,7 +346,7 @@ class Trelolo(TrelloClient, GitLabMixin):
                         desc=helpers.CardDescription.INIT_DESCRIPTION
                     )
                 card.fetch(eager=False)
-                logger.info("found card {}".format(card.name))
+                log.info('found card {}'.format(card.name))
                 # new item (the whole sub card)
                 item = self.add_checklist_item(
                     card, child['title'], child['state']
@@ -524,18 +386,22 @@ class Trelolo(TrelloClient, GitLabMixin):
                     stored_card.item_name = child['title']
                     stored_card.checked = child['state']
         try:
-            parent_card = self.get_card(stored_card.parent_card_id)
+            parent_card_id = stored_card.parent_card_id \
+                if stored_card else card.id
+            parent_card = self.get_card(parent_card_id)
             cd = helpers.CardDescription(parent_card.desc)
             cd.set_list_value('members', child['members'])
             parent_card.set_description(cd.get_description())
-        except:
-            logger.error('failed to update parent card')
+        except Exception as e:
+            log.warning(
+                'failed to update parent card: {}'.format(str(e))
+            )
         # save changes
         db.session.commit()
         try:
             pass
         except Exception as e:
-            logger.error(
+            log.error(
                 'Error updating card description: {}'.format(str(e))
             )
 
@@ -559,20 +425,19 @@ class Trelolo(TrelloClient, GitLabMixin):
 
     def update_checklist_item(self, item_name, checked, stored_card):
         if not stored_card:
-            logger.error('card or item not specified')
+            log.warning('card or item not specified')
             return False
         card = self.get_card(stored_card.parent_card_id)
         card.fetch(eager=False)
         cl = card.fetch_checklists()[0]
         # item = self.get_checklist_item(cl, stored_card.item_id)
-        logger.info(
-            'updating item {} on card {}'.format(
-                item_name, card.name)
+        log.info(
+            'updating item {} on card {}'.format(item_name, card.name)
         )
         upd = {}
         # check name change
         if item_name != stored_card.item_name:
-            logger.info(
+            log.info(
                 'renaming item {} to {}'.format(
                     stored_card.item_name, item_name
                 )
@@ -581,10 +446,8 @@ class Trelolo(TrelloClient, GitLabMixin):
             upd['item_name'] = item_name
         # check status change
         if checked != stored_card.checked:
-            logger.info(
-                'set checked status {} to {}'.format(
-                    item_name, checked
-                )
+            log.info(
+                'set checked status {} to {}'.format(item_name, checked)
             )
             cl.set_checklist_item(item_name, checked)
             upd['checked'] = checked
@@ -607,7 +470,7 @@ class Trelolo(TrelloClient, GitLabMixin):
             )
             cl.delete_checklist_item(item['name'])
         except:
-            logger.error('could not remove checklist item')
+            log.error('could not remove checklist item')
         self.remove_webhook(
             stored_card.hook_id,
             stored_card.parent_card_id
@@ -617,7 +480,7 @@ class Trelolo(TrelloClient, GitLabMixin):
         self.remove_checklist_item(stored_card)
         db.session.delete(stored_card)
         db.session.commit()
-        logger.info('card has been succesfully deleted')
+        log.info('card has been succesfully deleted')
 
     # GITLAB WEBHOOKS
 
@@ -650,22 +513,19 @@ class Trelolo(TrelloClient, GitLabMixin):
         stored_targets = {target.parent_card_id: target
                           for target in stored_targets}
         stored_card_ids = [id for id in stored_targets.keys()]
-        logger.info(stored_targets)
-        logger.info(stored_card_ids)
         cards = self.get_cards_for_gitlab(data['label'], data['milestone'])
         trello_links = []
         if cards:
             for card in cards:
-                card.fetch(eager=False)
                 try:
+                    card.fetch(eager=False)
                     stored_card_ids.remove(card.id)
                 except ValueError:
                     pass
                 if card.id in stored_targets.keys():
-                    logger.info('found stored target')
                     target = stored_targets[card.id]
                     if data['label'] or data['milestone']:
-                        logger.info(
+                        log.info(
                             'updating gitlab item {} on card {}'.format(
                                 target.item_name, card.name)
                         )
@@ -675,16 +535,17 @@ class Trelolo(TrelloClient, GitLabMixin):
                         if upd and target:
                             target.item_name = data['target_title']
                             target.checked = data['state']
-                        trello_links.append('* {}'.format(card.url))
+                        trello_links.append(
+                            helpers.format_trello_link(card.url)
+                        )
                     else:
-                        logger.info(
+                        log.info(
                             'removing gitlab item {} from card {}'.format(
                                 target.item_name, card.name)
                         )
                         self.remove_checklist_item(target)
                         db.session.delete(target)
                 else:
-                    logger.info('creating gitlab item')
                     item = self.add_checklist_item(
                         card, data['target_title'], data['state']
                     )
@@ -697,14 +558,23 @@ class Trelolo(TrelloClient, GitLabMixin):
                         item_id=item['id'],
                         item_name=data['target_title'],
                         checked=data['state'],
+                        target_type=data['type'],
                         hook_id='',
                         hook_url=''
                     )
-                    trello_links.append('* {}'.format(card.url))
+                    log.info(
+                        'creating gitlab item {}'.format(data['target_title'])
+                    )
                     db.session.add(new_item)
+                    trello_links.append(helpers.format_trello_link(card.url))
+
+                cd = helpers.CardDescription(card.desc)
+                cd.set_list_value('members', data['assignee_email'] or '')
+                card.set_description(cd.get_description())
+
             db.session.commit()
         else:
-            logger.warning(
+            log.warning(
                 'no suitable card found on any team-board \
                  for label: {} or milestone: {}'.format(
                     data['label'], data['milestone']
@@ -712,7 +582,7 @@ class Trelolo(TrelloClient, GitLabMixin):
             )
         for card_id in stored_card_ids:
             target = stored_targets[card_id]
-            logger.info(
+            log.info(
                 'removing gitlab item {} from card {}'.format(
                     target.item_name, card_id)
             )
@@ -724,8 +594,8 @@ class Trelolo(TrelloClient, GitLabMixin):
         old_desc = self.parse_gl_target_desc(data['description'])
         new_desc = self.format_gl_desc([old_desc[0], trello_links])
 
-        logger.info(data['description'])
-        logger.info(new_desc)
+        log.info(data['description'])
+        log.info(new_desc)
 
         if new_desc != data['description']:
             self.update_gl_desc(
@@ -751,18 +621,18 @@ class Trelolo(TrelloClient, GitLabMixin):
                     cl.set_checklist_item(item['name'], state)
                     target.checked = state
                 except:
-                    logger.error(
+                    log.error(
                         'could not fetch a checklist for card {}'.format(
                             card.name
                         )
                     )
             except ResourceUnavailable:
-                logger.error(
+                log.error(
                     'could not get trello card {} for GL target {}'.format(
                         target.parent_card_id, id
                     )
                 )
         db.session.commit()
-        logger.info(
+        log.info(
             'succesfully synced trello GL items with GL target'
         )
