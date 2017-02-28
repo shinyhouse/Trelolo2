@@ -81,7 +81,7 @@ class GitLabMixin(object):
                 'color': '#5843AD'
             })
         except Exception as e:
-            log.error(
+            log.warning(
                 'error creating gitlab label {}: {}'.format(name, str(e))
             )
 
@@ -101,7 +101,7 @@ class GitLabMixin(object):
                 'setting labels for target {}: {}'.format(id, labels)
             )
         except Exception as e:
-            log.error(
+            log.warning(
                 'error adding gitlab label {} to {}: {}'.format(
                     name, id, str(e)
                 )
@@ -123,7 +123,7 @@ class GitLabMixin(object):
                 'removing labels from target {}: {}'.format(id, labels)
             )
         except Exception as e:
-            log.error(
+            log.warning(
                 'error removing label from {}: {}'.format(id, str(e))
             )
 
@@ -136,7 +136,7 @@ class GitLabMixin(object):
             labels = [l for l in r.json()['labels'] if l[0] == '$']
             return labels[0][1:]
         except Exception as e:
-            log.error(
+            log.warning(
                 'error fetching labels from {}({}): {}'.format(
                     target_url, id, str(e)
                 )
@@ -151,7 +151,7 @@ class GitLabMixin(object):
             milestone = r.json()['title']
             return milestone[1:] if milestone[0] == '$' else False
         except Exception as e:
-            log.error(
+            log.warning(
                 'error fetching gl milestone {} for project {}: {}'.format(
                     milestone_id, project_id, str(e)
                 )
@@ -168,7 +168,7 @@ class GitLabMixin(object):
                 if data['name_with_namespace'] else data['name']
             return project_name
         except Exception as e:
-            log.error(
+            log.warning(
                 'error fetching gl project {}: {}'.format(project_id, str(e))
             )
 
@@ -180,7 +180,7 @@ class GitLabMixin(object):
         try:
             return r.json()['email']
         except Exception as e:
-            log.error(
+            log.warning(
                 'error fetching email from assignee {}'.format(
                     assignee_id, str(e)
                 )
