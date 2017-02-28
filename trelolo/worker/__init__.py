@@ -82,11 +82,9 @@ def payload_gitlab_generic_event(data):
         data['title'],
         data['url']
     )
-    # log.info('pred data')
     data['assignee_email'] = client.fetch_gl_assignee_email(
         data['assignee_id']
     )
-    log.info(data)
     client.handle_gitlab_generic_event(data)
 
 
