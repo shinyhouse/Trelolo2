@@ -41,6 +41,15 @@ CTRL+C, wait for while and once you will be back in console type:
     $ docker-compose kill && docker-compose rm -f
     $ docker-compose up
 
+## DB
+
+Run `docker exec -it web sh`
+and then:
+- `python manage.py db init`
+- `python manage.py db migrate`
+- `python manage.py db upgrade`
+in order to initialize Trelolo database
+
 ## Configuration
 
 Required environment variables are:
